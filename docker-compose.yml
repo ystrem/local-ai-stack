@@ -54,7 +54,12 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["${GPU_DEVICE_ID:-0}"]
+              # COMFYUI_GPU_ID — per-machine GPU pro ComfyUI:
+              #   aiworker (2× GPU): GPU 1 (qwen drží GPU 0)
+              #   aicore (1× GPU):   GPU 0 (jediná karta)
+              #   desktop (1× GPU):  GPU 0
+              # On-demand střídání na 1-GPU strojích řeší hub-agent orchestrace.
+              device_ids: ["${COMFYUI_GPU_ID:-0}"]
               capabilities: [gpu]
     volumes:
       - ./comfyui-unified/server.py:/app/server.py:ro

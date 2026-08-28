@@ -141,6 +141,9 @@ GPU_ARCH=$GPU_ARCH
 GGML_CUDA_ARCH=$GGML_CUDA_ARCH
 CUDA_DEVICE=auto
 GPU_DEVICE_ID=0
+# ComfyUI GPU: aiworker má 2× GPU — qwen drží GPU 0, comfyui jde na GPU 1.
+# aicore/desktop mají 1× GPU — comfyui jde na GPU 0 (sdílené, on-demand).
+COMFYUI_GPU_ID=$([ "$MACHINE_ID" = "aiworker" ] && echo 1 || echo 0)
 MOSS_MULTI_GPU=$MOSS_MULTI_GPU
 
 # ComfyUI build args
