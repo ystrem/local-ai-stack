@@ -1,0 +1,30 @@
+# local-ai-stack — machines registry (per-cluster, per-machine)
+#
+# Toto je compile-time seznam strojů v clusteru. install.sh generuje
+# machines.yaml (gitignored) z této šablony + per-machine IP z .env.
+#
+# Pole per stroj:
+#   id        — unikátní identifikátor (musí matchit s hub-agent/services.yaml)
+#   name      — popisné jméno (zobrazeno v Hub-UI)
+#   url       — api-wrapper URL (port 8288 — Hub-UI master; stejný jako hub-ui docker compose service)
+#   host      — IP adresa nebo hostname stroje (pro WebUI discovery {machine_ip} expand)
+#   agent_url — hub-agent sidecar URL (port 8199) — pro start/stop služeb
+
+machines:
+  - id: aicore
+    name: aicore (P40 Pascal sm_61)
+    url: http://${AICORE_HOST}:8288
+    host: ${AICORE_HOST}
+    agent_url: http://${AICORE_HOST}:8199
+
+  - id: aiworker
+    name: aiworker (Blackwell sm_120, 2× 5060 Ti)
+    url: http://${AIWORKER_HOST}:8288
+    host: ${AIWORKER_HOST}
+    agent_url: http://${AIWORKER_HOST}:8199
+
+  - id: desktop
+    name: desktop (3070 / 6800XT)
+    url: http://${DESKTOP_HOST}:8288
+    host: ${DESKTOP_HOST}
+    agent_url: http://${DESKTOP_HOST}:8199
