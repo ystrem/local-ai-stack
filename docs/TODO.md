@@ -146,7 +146,7 @@
 
 ## ✅ Hotovo (28.8.2026)
 
-- [x] Master `ystrem/local-ai-stack` pushnut s 16 commity
+- [x] Master `ystrem/local-ai-stack` pushnut (30+ commitů, HEAD e98c7df)
 - [x] Oba submoduly (`comfyui-unified`, `local-ai-coding-servers`) jako git submoduly
 - [x] `api-wrapper/` a `webapp/` smazány ze `comfyui-unified` (přesunuto do masteru)
 - [x] `hub-ui/backend/` s 5 service routery (proxy, stt, video, llm, webui_registry)
@@ -156,8 +156,16 @@
 - [x] End-to-end test na aiworkeru — všechny endpointy OK
 - [x] `/api/webui/registry` vrací plný JSON s compile-time + runtime WebUI discovery
 - [x] `docker compose build` + `up -d` funkční pro aiworker profil
-- [x] CACHE_TYPE_K=f16 hardcoded v docker-compose (P40 garbage protection)
+- [x] CACHE_TYPE_K=f16 (P40 garbage protection) — nyní z registru (llm_registry.json)
 - [x] install.sh generuje machines.yaml z machines.example.yaml (env subs)
+- [x] **LLM model registry** (llm_registry.json) — žádné hardcoded modely
+- [x] **llm-select.sh** — QWEN_MODEL_ID override → GPU arch → VRAM → NFS existence → priority
+- [x] **Modely VŽDY z NFS** — download-models.sh default /mnt/models root, žádný lokální download
+- [x] **GPU split** — aiworker: qwen=GPU0 + comfyui=GPU1 (COMFYUI_GPU_ID=1); aicore on-demand
+- [x] **Port fix** — qwen=8085, ornith=8086, split=8087/8088 (kolize s qbittorrent/filebrowser)
+- [x] **force-recreate** v install.sh (mountnuté soubory se vždy načtou)
+- [x] **IMG generování funguje** — HTTP 200, PNG 512×512 (flux2-klein-q6k, aiworker GPU 1)
+- [x] **MACHINE_ID regen** — .env se přegeneruje když stroj nesedí s detekcí
 
 ---
 
