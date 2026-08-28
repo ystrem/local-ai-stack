@@ -14,6 +14,15 @@
 
 name: local-ai-stack
 
+# Force .env loading (Docker Compose 5.x should auto-load but we make explicit)
+x-common-env: &common-env
+  env_file:
+    - .env
+  environment:
+    MACHINE_ID: ${MACHINE_ID:-aiworker}
+    GPU_ARCH: ${GPU_ARCH:-120}
+    MODEL_DIR: ${MODEL_DIR:-/mnt/models}
+
 services:
   # ── IMG + TTS + VIDEO (ComfyUI engine) ────────────────────
   comfyui:
