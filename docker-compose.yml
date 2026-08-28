@@ -123,7 +123,8 @@ services:
       - "--parallel"
       - "1"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:${QWEN_PORT:-8080}/health || exit 1"]
+      # Python3 místo curl (curl není v llama.cpp image)
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:${QWEN_PORT:-8080}/health')\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -202,7 +203,8 @@ services:
       - ./hub-agent/toggles.yaml:/app/toggles.yaml:ro
     profiles: [aicore, aiworker, desktop]
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8199/capabilities"]
+      # Python3 místo curl (curl není v hub-agent image)
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8199/capabilities')"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -3,6 +3,7 @@
 Master rejstřík všech WebUI v clusteru. Hub-UI frontend načte přes
 GET /api/webui/registry.
 """
+import asyncio
 import logging
 import os
 import time
@@ -48,7 +49,7 @@ def _ping_webui(url: str, ui_type: str) -> bool:
     path = paths.get(ui_type, "/")
     target = f"{url.rstrip('/')}{path}"
     try:
-        with httpx.Client(timeout=2) as client:
+        with httpx.Client(timeout=1.5) as client:
             resp = client.get(target)
             return resp.status_code < 500
     except httpx.HTTPError:
@@ -79,6 +80,8 @@ async def get_all_webui() -> list[dict]:
             machine_hosts[mid] = host
 
     results = []
+    probes = []  # (full_url, ui_type, svc, mid, webui)
+
     for svc in services:
         webui = svc.get("webui")
         if not webui or webui is None:
@@ -89,18 +92,26 @@ async def get_all_webui() -> list[dict]:
 
         for mid, host in machine_hosts.items():
             full_url = _expand_url(url_template, host)
-            ok = _ping_webui(full_url, ui_type)
-            results.append({
-                "id": svc["id"],
-                "machine": mid,
-                "type": svc.get("type", "unknown"),
-                "url": full_url,
-                "label": webui.get("label", svc["id"]),
-                "icon": webui.get("icon", "🔗"),
-                "ui_type": ui_type,
-                "running": ok,
-                "shared_with": webui.get("shared_with"),
-            })
+            probes.append((full_url, ui_type, svc, mid, webui))
+
+    # Paralelní probe všech WebUI endpointů (asyncio.gather) — ~2s místo ~14s
+    async def _probe_one(probe):
+        full_url, ui_type, svc, mid, webui = probe
+        ok = await asyncio.to_thread(_ping_webui, full_url, ui_type)
+        return {
+            "id": svc["id"],
+            "machine": mid,
+            "type": svc.get("type", "unknown"),
+            "url": full_url,
+            "label": webui.get("label", svc["id"]),
+            "icon": webui.get("icon", "🔗"),
+            "ui_type": ui_type,
+            "running": ok,
+            "shared_with": webui.get("shared_with"),
+        }
+
+    if probes:
+        results = await asyncio.gather(*(_probe_one(p) for p in probes))
 
     return results
 
