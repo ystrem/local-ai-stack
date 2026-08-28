@@ -157,7 +157,6 @@ CLUSTER_MODE=manual
 # Stroje v clusteru (auto-detekované pro tento stroj, ostatní defaulty)
 ${MACHINE_ID^^}_HOST=$MY_IP
 AICORE_HOST=\${AICORE_HOST:-192.168.10.60}
-AIWORKER_HOST=\${AIWORKER_HOST:-192.168.10.194}
 DESKTOP_HOST=\${DESKTOP_HOST:-192.168.10.228}
 EOF
   echo "  .env vytvořen. MACHINE_ID=$MACHINE_ID, IP=$MY_IP"
