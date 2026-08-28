@@ -156,6 +156,21 @@ case "$MACHINE_ID" in
     ;;
 esac
 
+# 7b) Generuj hub-ui/machines.yaml z machines.example.yaml (env substituce)
+if [ ! -f hub-ui/machines.yaml ]; then
+  echo "  Generuji hub-ui/machines.yaml z machines.example.yaml (env subs)..."
+  AICORE_HOST="${AICORE_HOST:-192.168.10.60}"
+  AIWORKER_HOST="${AIWORKER_HOST:-192.168.10.194}"
+  DESKTOP_HOST="${DESKTOP_HOST:-192.168.10.228}"
+  sed -e "s|\${AICORE_HOST}|$AICORE_HOST|g" \
+      -e "s|\${AIWORKER_HOST}|$AIWORKER_HOST|g" \
+      -e "s|\${DESKTOP_HOST}|$DESKTOP_HOST|g" \
+      hub-ui/machines.example.yaml > hub-ui/machines.yaml
+  echo "    hotovo. Edituj .env pro jiné IP adresy a spusť install.sh znovu."
+else
+  echo "  hub-ui/machines.yaml už existuje, přeskočeno (smazat pro regeneraci)"
+fi
+
 # 8) Docker compose build (pokud není --no-build)
 if [ "$NO_BUILD" -eq 0 ]; then
   echo "  Docker compose build (může trvat 10-30 min poprvé)..."
