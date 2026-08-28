@@ -1,0 +1,188 @@
+# local-ai-stack — master orchestrace
+#
+# Build context je VŽDY v submoduleu (./comfyui-unified nebo ./local-ai-coding-servers).
+# Master nemá Dockerfile duplicitu. Per-machine profily:
+#   - aicore   (P40 Pascal sm_61)
+#   - aiworker (Blackwell sm_120, 2× GPU)
+#   - desktop  (3070 Ampere / 6800XT ROCm)
+#   - codebox  (notebook, CPU)
+#
+# Po `docker compose --profile aicore up -d` běží:
+#   comfyui (IMG+TTS+VIDEO) + qwen (LLM) + hub-ui + hub-agent
+#
+# Per-machine env: .env (gitignored), generovaný install.sh
+
+name: local-ai-stack
+
+services:
+  # ── IMG + TTS + VIDEO (ComfyUI engine) ────────────────────
+  comfyui:
+    build:
+      context: ./comfyui-unified
+      dockerfile: Dockerfile
+      args:
+        CUDA_BASE: ${CUDA_BASE:-nvidia/cuda:13.0.3-runtime-ubuntu24.04}
+        TORCH_VERSION: ${TORCH_VERSION:-2.11.0}
+        TORCH_VISION: ${TORCH_VISION:-0.26.0}
+        TORCH_AUDIO: ${TORCH_AUDIO:-2.11.0}
+        TORCH_INDEX: ${TORCH_INDEX:-cu130}
+        EXTRA_ARGS: ${COMFYUI_EXTRA_ARGS:---use-pytorch-cross-attention --fast --bf16-unet --highvram}
+    image: comfyui-unified:${GPU_ARCH:-sm120}
+    profiles: [aicore, aiworker, desktop]
+    container_name: comfyui-${MACHINE_ID}
+    restart: unless-stopped
+    ports:
+      - "8188:8188"  # FastAPI backend
+      - "8189:8189"  # ComfyUI WebUI
+    environment:
+      - MODEL_REGISTRY_PATH=/app/model_registry.json
+      - API_PORT=8188
+      - CUDA_DEVICE=${CUDA_DEVICE:-0}
+      - MOSS_MULTI_GPU=${MOSS_MULTI_GPU:-0}
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
+    volumes:
+      - ./comfyui-unified/server.py:/app/server.py:ro
+      - ./comfyui-unified/model_registry.json:/app/model_registry.json:ro
+      - ./comfyui-unified/extra_model_paths.yaml:/opt/ComfyUI/extra_model_paths.yaml:ro
+      - ./comfyui-unified/workflows/:/opt/ComfyUI/workflows/:ro
+      - ${MODEL_DIR:-/mnt/models}/comfyui:/opt/ComfyUI/models:rw
+      - ${MODEL_DIR:-/mnt/models}/moss-tts-v1.5:/opt/ComfyUI/tts_models/moss_tts/MOSS-TTS-v1.5:ro
+      - ${MODEL_DIR:-/mnt/models}/moss-tts-local/MOSS-Audio-Tokenizer:/opt/ComfyUI/tts_models/moss_tts/MOSS-Audio-Tokenizer:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import httpx,json; r=httpx.get('http://localhost:8188/health'); assert r.json().get('service_status')=='ok'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ── LLM (llama.cpp, multi-arch) ──────────────────────────
+  qwen:
+    build:
+      context: ./local-ai-coding-servers
+      dockerfile: Dockerfile.llamacpp
+      args:
+        GGML_CUDA_ARCH: ${GGML_CUDA_ARCH:-120}
+    image: llamacpp-mtp:sm${GGML_CUDA_ARCH:-120}
+    profiles: [aicore, aiworker, desktop]
+    container_name: qwen-${MACHINE_ID}
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ${MODEL_DIR:-/mnt/models}:/models:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    command:
+      - "--model"
+      - "${QWEN_MODEL:-/models/llama/Qwen3.8-27B-Q4_K_M.gguf}"
+      - "--spec-type"
+      - "draft-mtp"
+      - "--spec-draft-n-max"
+      - "${QWEN_MTP_N_MAX:-3}"
+      - "--gpu-layers"
+      - "99"
+      - "--ctx-size"
+      - "${CTX_SIZE:-32768}"
+      # P40: f16 POVINNOST (q4_0 → garbage output, benchmark 19.8.2026)
+      - "--cache-type-k"
+      - "f16"
+      - "--cache-type-v"
+      - "${CACHE_TYPE_V:-q4_0}"
+      - "--jinja"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "${QWEN_PORT:-8080}"
+      - "--threads"
+      - "${THREADS:-8}"
+      - "--parallel"
+      - "1"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:${QWEN_PORT:-8080}/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ── STT (faster-whisper) — volitelný, jen stroje kde má smysl ──
+  stt-service:
+    image: ghcr.io/021dev/faster-whisper-server-public:latest
+    profiles: [aicore, codebox]   # STT běží jen tam kde je GPU/CPU dost
+    container_name: stt-${MACHINE_ID}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - WHISPER_MODEL=large-v3
+      - WHISPER_DEVICE=cuda
+    volumes:
+      - ${MODEL_DIR:-/mnt/models}/faster-whisper:/root/.cache/huggingface:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
+
+  # ── Hub-UI (master) — FastAPI backend + SPA ──────────────
+  hub-ui:
+    build:
+      context: ./hub-ui/backend
+    image: local-ai-stack/hub-ui:latest
+    container_name: hub-ui-${MACHINE_ID}
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - comfyui
+      - qwen
+    environment:
+      - HUB_MACHINES_FILE=/app/machines.yaml
+      - HUB_PROBE_INTERVAL=${HUB_PROBE_INTERVAL:-5}
+      - HUB_GENERATE_TIMEOUT=${HUB_GENERATE_TIMEOUT:-600}
+      - CLUSTER_MODE=${CLUSTER_MODE:-manual}
+    volumes:
+      - ./hub-ui/machines.yaml:/app/machines.yaml:ro
+      - ./hub-ui/frontend:/app/static:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import httpx; httpx.get('http://localhost:8288/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    profiles: [aicore, aiworker, desktop]
+
+  # ── Hub-agent (per-machine sidecar, ovládá docker compose) ──
+  hub-agent:
+    build:
+      context: ./comfyui-unified/hub-agent
+    image: comfyui-unified/hub-agent:latest
+    container_name: hub-agent-${MACHINE_ID}
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./hub-agent/services.yaml:/app/services.yaml:ro
+      - ./hub-agent/toggles.yaml:/app/toggles.yaml:ro
+    profiles: [aicore, aiworker, desktop]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8199/capabilities"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
