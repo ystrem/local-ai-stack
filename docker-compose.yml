@@ -99,21 +99,20 @@ services:
               capabilities: [gpu]
     command:
       - "--model"
-      # QWEN_MODEL je vždy v .env (vygenerovaný install.sh per-machine).
-      # Default NENÍ použit — pokud chybí, fail fast s jasnou hláškou.
-      # Modely jsou na NFS /mnt/models, mount do /models (ro).
-      - "${QWEN_MODEL:?QWEN_MODEL není nastaven v .env — spusť ./scripts/install.sh}"
+      # QWEN_MODEL je path z llm_registry.json (vybraná install.sh/llm-select.sh).
+      # Modely jsou VŽDY na NFS (/mnt/models), mount do /models (ro).
+      - "${QWEN_MODEL}"
       - "--spec-type"
-      - "draft-mtp"
+      - "${SPEC_TYPE:-draft-mtp}"
       - "--spec-draft-n-max"
-      - "${QWEN_MTP_N_MAX:-3}"
+      - "${SPEC_DRAFT_N_MAX:-3}"
       - "--gpu-layers"
       - "99"
       - "--ctx-size"
       - "${CTX_SIZE:-32768}"
-      # P40: f16 POVINNOST (q4_0 → garbage output, benchmark 19.8.2026)
+      # K-cache: z registru (P40 = f16 povinnost — q4_0 → garbage output)
       - "--cache-type-k"
-      - "f16"
+      - "${CACHE_TYPE_K:-f16}"
       - "--cache-type-v"
       - "${CACHE_TYPE_V:-q4_0}"
       - "--jinja"

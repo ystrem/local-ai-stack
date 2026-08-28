@@ -52,9 +52,6 @@ case "$GPU_NAME" in
     CUDA_BASE=nvidia/cuda:12.4.1-runtime-ubuntu22.04
     TORCH_INDEX=cu124
     COMFYUI_EXTRA_ARGS="--use-pytorch-cross-attention --highvram"
-    QWEN_MODEL_DEFAULT="/models/llama/Qwen3.8-27B-Q4_K_M.gguf"
-    CTX_SIZE_DEFAULT=32768
-    CACHE_TYPE_V_DEFAULT=q4_0
     MOSS_MULTI_GPU=0
     ;;
   *5060*)
@@ -62,9 +59,6 @@ case "$GPU_NAME" in
     CUDA_BASE=nvidia/cuda:13.0.3-runtime-ubuntu24.04
     TORCH_INDEX=cu130
     COMFYUI_EXTRA_ARGS="--use-pytorch-cross-attention --fast --bf16-unet"
-    QWEN_MODEL_DEFAULT="/models/llama/Qwen3.8-27B-NVFP4-MTP-GGUF/Qwen3.8-27B-NVFP4-MTP-COMPACT-LOW.gguf"
-    CTX_SIZE_DEFAULT=16384
-    CACHE_TYPE_V_DEFAULT=q4_0
     MOSS_MULTI_GPU=1
     ;;
   *3070*)
@@ -72,9 +66,6 @@ case "$GPU_NAME" in
     CUDA_BASE=nvidia/cuda:12.4.1-runtime-ubuntu22.04
     TORCH_INDEX=cu124
     COMFYUI_EXTRA_ARGS="--use-pytorch-cross-attention --fast"
-    QWEN_MODEL_DEFAULT="/models/llama/Qwen3.8-27B-IQ4_XS.gguf"
-    CTX_SIZE_DEFAULT=32768
-    CACHE_TYPE_V_DEFAULT=q4_0
     MOSS_MULTI_GPU=0
     ;;
   *6800*)
@@ -82,14 +73,22 @@ case "$GPU_NAME" in
     CUDA_BASE=rocm/dev-ubuntu-22.04:6.2.4
     TORCH_INDEX=rocm6.2
     COMFYUI_EXTRA_ARGS="--use-pytorch-cross-attention --fast"
-    QWEN_MODEL_DEFAULT="/models/llama/Qwen3.8-27B-IQ4_XS.gguf"
-    CTX_SIZE_DEFAULT=32768
-    CACHE_TYPE_V_DEFAULT=f16
     MOSS_MULTI_GPU=0
     ;;
   *) echo "ERROR: neznámá GPU: $GPU_NAME" >&2; exit 1 ;;
 esac
 echo "  Detekoval jsem: $MACHINE_ID (sm_$GPU_ARCH)"
+
+# ── 2b) Výběr LLM modelu z registru (žádné hardcoded modely!) ──
+# Modely jsou VŽDY na NFS (/mnt/models), nikdy lokálně. Registry
+# (llm_registry.json) je jediný zdroj pravdy — analogie k
+# comfyui-unified/model_registry.json pro IMG.
+if [ -n "${QWEN_MODEL_ID:-}" ]; then
+  echo "  Operátor zvolil QWEN_MODEL_ID=$QWEN_MODEL_ID"
+fi
+LLM_SELECT="$(./scripts/llm-select.sh)" || { echo "ERROR: výběr LLM modelu selhal" >&2; exit 1; }
+eval "$LLM_SELECT"
+echo "  LLM model: $QWEN_MODEL_ID ($QWEN_MODEL, ctx=$CTX_SIZE, cache_k=$CACHE_TYPE_K)"
 
 # ── 3) Auto-detekce IP adresy stroje ─────────────────────
 # Zkusíme různé zdroje (první úspěšný vyhraje)
@@ -142,12 +141,16 @@ TORCH_AUDIO=2.5.1
 TORCH_INDEX=$TORCH_INDEX
 COMFYUI_EXTRA_ARGS=$COMFYUI_EXTRA_ARGS
 
-# Modely (NFS mount)
+# Modely (NFS mount — VŽDY NFS, nikdy lokálně)
 MODEL_DIR=/mnt/models
-QWEN_MODEL=$QWEN_MODEL_DEFAULT
+QWEN_MODEL=$QWEN_MODEL
+QWEN_MODEL_ID=$QWEN_MODEL_ID
 QWEN_PORT=8080
-CTX_SIZE=$CTX_SIZE_DEFAULT
-CACHE_TYPE_V=$CACHE_TYPE_V_DEFAULT
+CTX_SIZE=$CTX_SIZE
+CACHE_TYPE_K=$CACHE_TYPE_K
+CACHE_TYPE_V=$CACHE_TYPE_V
+SPEC_TYPE=$SPEC_TYPE
+SPEC_DRAFT_N_MAX=$SPEC_DRAFT_N_MAX
 
 # Hub-UI
 HUB_PROBE_INTERVAL=5
