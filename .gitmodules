@@ -1,0 +1,6 @@
+[submodule "comfyui-unified"]
+	path = comfyui-unified
+	url = https://github.com/ystrem/comfyui-unified.git
+[submodule "local-ai-coding-servers"]
+	path = local-ai-coding-servers
+	url = https://github.com/ystrem/local-ai-coding-servers.git
