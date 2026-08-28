@@ -195,26 +195,18 @@ if [ -d "$MODEL_DIR/llama" ] || [ -d "$MODEL_DIR" ]; then
     echo "  WARN: download selhal (offline? skip)"
 fi
 
-# ── 7) Per-machine setup (submodule) ─────────────────────
-echo "  Spouštím per-machine setup ($MACHINE_ID)..."
-case "$MACHINE_ID" in
-  aicore)
-    (cd local-ai-coding-servers && MODEL_DIR="$MODEL_DIR" ./scripts/setup-aicore.sh) || \
-      echo "  WARN: setup-aicore.sh selhal"
-    ;;
-  aiworker)
-    (cd local-ai-coding-servers && MODEL_DIR="$MODEL_DIR" ./scripts/setup-aiworker.sh) || \
-      echo "  WARN: setup-aiworker.sh selhal"
-    ;;
-  desktop)
-    (cd local-ai-coding-servers && MODEL_DIR="$MODEL_DIR" ./scripts/setup-desktop.sh) || \
-      echo "  WARN: setup-desktop.sh selhal"
-    ;;
-  codebox)
-    (cd local-ai-coding-servers && ./scripts/setup-codebox.sh) || \
-      echo "  WARN: setup-codebox.sh selhal"
-    ;;
-esac
+# ── 7) Model check (download jen pokud chybí) ────────────
+# POZNÁMKA: docker compose build + up dělá master sám (krok 8+9).
+# Submodule setup-*.sh dělá docker compose take — proto ho nevoláme.
+# Pro standalone setup bez local-ai-stack můžeš jet setup-aicore.sh
+# přímo ze submoduleu.
+if [ -d "$MODEL_DIR/llama" ] || [ -d "$MODEL_DIR" ]; then
+  echo "  Stahuji LLM modely do $MODEL_DIR/llama (pokud chybí)..."
+  (cd local-ai-coding-servers && MODEL_DIR="$MODEL_DIR/llama" ./scripts/download-models.sh) || \
+    echo "  WARN: download selhal (offline? skip)"
+else
+  echo "  SKIP: $MODEL_DIR/llama neexistuje"
+fi
 
 # ── 8) Docker compose build ────────────────────────────
 if [ "$NO_BUILD" -eq 0 ]; then
