@@ -170,6 +170,8 @@ services:
       - ./hub-ui/machines.yaml:/app/machines.yaml:ro
       - ./hub-agent/services.yaml:/app/hub-agent/services.yaml:ro
       - ./hub-ui/frontend:/app/static:ro
+    environment:
+      HUB_SERVICES_FILE: /app/hub-agent/services.yaml
     healthcheck:
       test: ["CMD", "python3", "-c", "import httpx; httpx.get('http://localhost:8288/api/health')"]
       interval: 30s
