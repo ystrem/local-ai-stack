@@ -228,8 +228,10 @@ fi
 
 # ── 9) Docker compose up ────────────────────────────────
 if [ "$NO_UP" -eq 0 ]; then
-  echo "  Docker compose up -d (profil: $MACHINE_ID)..."
-  docker compose --profile "$MACHINE_ID" up -d
+  echo "  Docker compose up -d (profil: $MACHINE_ID, force-recreate)..."
+  # force-recreate: kontejnery musí vždy nabrat nový kód (server.py je
+  # mountnutý z masteru, ale bez recreate kontejner běží se starou verzí)
+  docker compose --profile "$MACHINE_ID" up -d --force-recreate
 else
   echo "  --no-up, skip Docker compose up"
 fi
