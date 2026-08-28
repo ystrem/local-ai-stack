@@ -189,12 +189,6 @@ if [ ! -d "$MODEL_DIR" ]; then
   echo "  WARN: $MODEL_DIR neexistuje, modely se nestáhnou"
 fi
 
-if [ -d "$MODEL_DIR/llama" ] || [ -d "$MODEL_DIR" ]; then
-  echo "  Stahuji LLM modely do $MODEL_DIR/llama (pokud chybí)..."
-  (cd local-ai-coding-servers && MODEL_DIR="$MODEL_DIR" ./scripts/download-models.sh) || \
-    echo "  WARN: download selhal (offline? skip)"
-fi
-
 # ── 7) Model check (download jen pokud chybí) ────────────
 # POZNÁMKA: docker compose build + up dělá master sám (krok 8+9).
 # Submodule setup-*.sh dělá docker compose take — proto ho nevoláme.
