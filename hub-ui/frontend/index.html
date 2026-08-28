@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="cs" class="dark" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ComfyUI Unified — Studio Console</title>
+<meta name="version" content="1.2.0">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=1.2.0">
+</head>
+<body class="bg-background text-on-surface font-body-md text-body-md overflow-x-hidden">
+<div id="app" class="flex min-h-screen">
+  <noscript><div class="p-6 bg-red-900 text-white font-bold">JavaScript je vypnutý — webapp vyžaduje JS.</div></noscript>
+  <button id="sidebar-backdrop" class="fixed inset-0 bg-black/60 z-40 hidden" aria-label="Zavřít menu"></button>
+
+  <!-- Sidebar Navigation -->
+  <aside id="sidebar" class="fixed left-0 top-0 h-screen w-[260px] flex flex-col border-r border-border bg-bg-soft z-50">
+    <div class="p-6 flex flex-col gap-1 border-b border-border">
+      <div class="flex items-center gap-2">
+        <img src="logo.svg" alt="ComfyUI Unified logo" class="w-7 h-7 text-primary">
+        <h1 class="font-headline-lg text-[20px] font-extrabold text-on-surface tracking-tight">ComfyUI Unified</h1>
+        <button id="theme-toggle" class="ml-auto text-text-muted hover:text-on-surface p-1 transition-colors" title="Přepnout téma" aria-label="Přepnout téma">◐</button>
+      </div>
+      <p class="text-text-muted font-label-mono text-[10px] uppercase tracking-widest mt-1">TTS & Image Studio</p>
+    </div>
+
+    <nav id="nav" class="flex-1 overflow-y-auto py-3 px-2 flex flex-col gap-1">
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="generate">
+        <span class="material-symbols-outlined text-[20px]">bolt</span>
+        <span>Generovat</span>
+      </button>
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="status">
+        <span class="material-symbols-outlined text-[20px]">dns</span>
+        <span>Status Overview</span>
+      </button>
+
+      <div class="mt-3 px-4 text-[10px] font-bold text-text-muted uppercase tracking-widest">Studios</div>
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="tts">
+        <span class="material-symbols-outlined text-[20px]">record_voice_over</span>
+        <span>TTS Studio</span>
+      </button>
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="image">
+        <span class="material-symbols-outlined text-[20px]">image</span>
+        <span>Image Studio</span>
+      </button>
+
+      <div class="mt-4 px-4 text-[10px] font-bold text-text-muted uppercase tracking-widest">Library & Tools</div>
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="templates">
+        <span class="material-symbols-outlined text-[20px]">style</span>
+        <span>Templates & Presets</span>
+      </button>
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="history">
+        <span class="material-symbols-outlined text-[20px]">history</span>
+        <span>History</span>
+      </button>
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="dashboard">
+        <span class="material-symbols-outlined text-[20px]">dashboard</span>
+        <span>Dashboard</span>
+      </button>
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="logs">
+        <span class="material-symbols-outlined text-[20px]">terminal</span>
+        <span>Live Logs</span>
+      </button>
+      <button class="nav-item flex items-center gap-3 px-4 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors w-full text-left font-medium" data-view="settings">
+        <span class="material-symbols-outlined text-[20px]">settings</span>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <div class="mt-auto border-t border-border p-4 bg-background/50 flex flex-col gap-3">
+      <div id="cluster-widget" class="bg-[#0a0f0b] border border-border rounded-lg p-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[10px] font-label-caps text-text-muted uppercase tracking-wider">Cluster</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" id="cluster-widget-dot"></span>
+        </div>
+        <div id="cluster-widget-body" class="space-y-1.5 font-label-mono text-[10px]">
+          <div class="flex justify-between"><span class="text-text-muted">Načítání...</span></div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">
+          CF
+        </div>
+        <div class="flex flex-col overflow-hidden">
+          <span class="text-xs font-bold truncate">ComfyUI Cluster</span>
+          <span class="text-[10px] text-text-muted truncate" id="sidebar-model-count">Načítání modelů...</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Application Wrapper -->
+  <div id="main-wrap" class="flex-1 ml-[260px] flex flex-col min-w-0">
+    <header id="topbar" class="fixed top-0 right-0 left-[260px] h-16 bg-background/90 backdrop-blur-md border-b border-border z-40 flex items-center justify-between px-8">
+      <div class="flex items-center gap-6">
+        <button id="menu-btn" class="md:hidden text-on-surface-variant hover:text-on-surface p-1">
+          <span class="material-symbols-outlined">menu</span>
+        </button>
+        <h1 id="view-title" class="font-headline-md text-headline-md font-extrabold text-primary">Status Overview</h1>
+        <span id="global-health" class="px-3 py-1 rounded-full text-xs font-label-mono bg-primary/10 text-primary border border-primary/20">
+          připojuji...
+        </span>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <div class="relative hidden sm:block">
+          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px]">search</span>
+          <input id="global-search" type="text" placeholder="Search templates or history..." class="bg-surface-container border border-border rounded-full pl-9 pr-4 py-1.5 text-xs text-on-surface placeholder:text-text-muted focus:outline-none focus:border-primary w-60 transition-all">
+        </div>
+        <button class="text-on-surface-variant hover:text-primary transition-colors p-1" title="Nápověda">
+          <span class="material-symbols-outlined">help_outline</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Cluster monitoring je ve levém panelu (cluster-widget) -->
+
+    <main id="content" class="mt-16 p-8 min-h-[calc(100vh-64px)] md:mt-[104px]">
+      <!-- Content views dynamically injected here -->
+    </main>
+
+    <div id="js-error" class="hidden m-6 p-4 bg-red-900/80 text-white rounded-lg border border-red-500 font-label-mono text-xs"></div>
+  </div>
+</div>
+
+<div id="modal-container" class="hidden"></div>
+<div id="toast-container" class="fixed bottom-6 right-6 z-[200] flex flex-col gap-2"></div>
+
+<script src="app.js?v=1.2.0"></script>
+</body>
+</html>
