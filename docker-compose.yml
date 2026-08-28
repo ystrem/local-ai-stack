@@ -156,7 +156,7 @@ services:
       - HUB_PROBE_INTERVAL=${HUB_PROBE_INTERVAL:-5}
       - HUB_GENERATE_TIMEOUT=${HUB_GENERATE_TIMEOUT:-600}
       - CLUSTER_MODE=${CLUSTER_MODE:-manual}
-      - COMFYUI_HOST=comfyui-${MACHINE_ID}
+      - COMFYUI_HOST=${COMFYUI_HOST:-comfyui-${MACHINE_ID}}
     volumes:
       - ./hub-ui/machines.yaml:/app/machines.yaml:ro
       - ./hub-ui/frontend:/app/static:ro
