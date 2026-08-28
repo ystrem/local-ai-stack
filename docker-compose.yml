@@ -168,6 +168,7 @@ services:
       - COMFYUI_HOST=${COMFYUI_HOST:-comfyui-${MACHINE_ID}}
     volumes:
       - ./hub-ui/machines.yaml:/app/machines.yaml:ro
+      - ./hub-agent/services.yaml:/app/hub-agent/services.yaml:ro
       - ./hub-ui/frontend:/app/static:ro
     healthcheck:
       test: ["CMD", "python3", "-c", "import httpx; httpx.get('http://localhost:8288/api/health')"]

@@ -24,7 +24,7 @@ WEBUI_CACHE_TTL = 30  # sekund
 
 # Config soubory
 MACHINES_FILE = Path(os.environ.get("HUB_MACHINES_FILE", "machines.yaml"))
-SERVICES_FILE = Path(os.environ.get("HUB_SERVICES_FILE", "hub-agent/services.yaml"))
+SERVICES_FILE = Path(os.environ.get("HUB_SERVICES_FILE", "services.yaml"))
 
 
 def _load_yaml(path: Path) -> dict:
