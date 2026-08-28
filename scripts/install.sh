@@ -194,12 +194,15 @@ fi
 # Submodule setup-*.sh dělá docker compose take — proto ho nevoláme.
 # Pro standalone setup bez local-ai-stack můžeš jet setup-aicore.sh
 # přímo ze submoduleu.
-if [ -d "$MODEL_DIR/llama" ] || [ -d "$MODEL_DIR" ]; then
-  echo "  Stahuji LLM modely do $MODEL_DIR/llama (pokud chybí)..."
-  (cd local-ai-coding-servers && MODEL_DIR="$MODEL_DIR/llama" ./scripts/download-models.sh) || \
+#
+# POZOR: download-models.sh default je /mnt/models/llama. My chceme stahovat
+# do /mnt/models (root, kde jsou modely už uloženy). Proto nepřidáváme /llama.
+if [ -d "$MODEL_DIR" ]; then
+  echo "  Stahuji LLM modely do $MODEL_DIR (pokud chybí)..."
+  (cd local-ai-coding-servers && MODEL_DIR="$MODEL_DIR" ./scripts/download-models.sh) || \
     echo "  WARN: download selhal (offline? skip)"
 else
-  echo "  SKIP: $MODEL_DIR/llama neexistuje"
+  echo "  SKIP: $MODEL_DIR neexistuje"
 fi
 
 # ── 8) Docker compose build ────────────────────────────
