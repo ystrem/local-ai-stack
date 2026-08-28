@@ -99,7 +99,10 @@ services:
               capabilities: [gpu]
     command:
       - "--model"
-      - "${QWEN_MODEL:-/models/llama/Qwen3.8-27B-Q4_K_M.gguf}"
+      # QWEN_MODEL je vždy v .env (vygenerovaný install.sh per-machine).
+      # Default NENÍ použit — pokud chybí, fail fast s jasnou hláškou.
+      # Modely jsou na NFS /mnt/models, mount do /models (ro).
+      - "${QWEN_MODEL:?QWEN_MODEL není nastaven v .env — spusť ./scripts/install.sh}"
       - "--spec-type"
       - "draft-mtp"
       - "--spec-draft-n-max"
@@ -172,7 +175,7 @@ services:
       - qwen
     environment:
       - HUB_MACHINES_FILE=/app/machines.yaml
-      - HUB_SERVICES_FILE=/app/hub-agent/services.yaml
+      - HUB_SERVICES_FILE=/app/services.yaml
       - HUB_PROBE_INTERVAL=${HUB_PROBE_INTERVAL:-5}
       - HUB_GENERATE_TIMEOUT=${HUB_GENERATE_TIMEOUT:-600}
       - CLUSTER_MODE=${CLUSTER_MODE:-manual}
