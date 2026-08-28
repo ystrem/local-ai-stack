@@ -1,0 +1,41 @@
+# Env (per-machine, necommitované)
+.env
+.env.local
+*.env.local
+
+# Per-cluster registry (gitignored, generovaný install.sh)
+hub-ui/machines.yaml
+hub-ui/machines.local.yaml
+hub-agent/services.local.yaml
+
+# Build cache
+build/
+dist/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Hermes scratch
+.hermes-tmp.*
