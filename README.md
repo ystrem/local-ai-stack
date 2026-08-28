@@ -79,8 +79,33 @@ stroje v clusteru.
 
 ## Modely
 
-Žádné v repa. Vše na `/mnt/models` (NFS mezi aicore/aiworker, lokální na
-desktop). Přidat nový model viz `local-ai-coding-servers/scripts/download-models.sh`.
+Žádné v repa. Vše na `/mnt/models` (NFS sdílené mezi aicore/aiworker/desktop).
+**Modely se nikdy nestahují lokálně** — jen na NFS, pak je mají všechny stroje.
+
+### LLM modely (registry)
+
+Katalog všech LLM modelů je v `llm_registry.json` (analogie k
+`comfyui-unified/model_registry.json` pro IMG). Install automaticky vybere
+nejpreferovanější model který:
+1. Podporuje GPU architekturu stroje (`gpu_archs`)
+2. Vejde se do VRAM stroje (`vram_mb`)
+3. Existuje na NFS
+
+```bash
+# Auto-výběr (při install)
+./scripts/llm-select.sh
+
+# Operátor override (model ID z registru)
+QWEN_MODEL_ID=qwen3.8-ud-iq4xs ./scripts/llm-select.sh
+QWEN_MODEL_ID=ornith-a3b-iq3 ./scripts/install.sh   # použít MoE
+
+# Jaké modely jsou v registru
+python3 -c "import json; [print(m['id'], '-', m['name']) for m in json.load(open('llm_registry.json'))['models']]"
+```
+
+### IMG modely (ComfyUI registry)
+
+Katalog v `comfyui-unified/model_registry.json` — 21 modelů (TTS + IMG + video).
 
 ## Submoduly
 
