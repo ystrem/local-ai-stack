@@ -1,0 +1,130 @@
+# local-ai-stack — master hub-agent services whitelist
+#
+# Toto je globální whitelist pro celý cluster. Každý stroj si ji mountne
+# z masteru do /app/services.yaml přes docker-compose volume.
+#
+# Compile-time WebUI registry: každá služba může mít `webui:` blok.
+# {machine_ip} se expanduje z machines.yaml při install.sh.
+# Runtime: hub-agent /capabilities endpoint hlásí tyto WebUI do Hub-UI master.
+#
+# Pole per služba:
+#   id              — unikátní identifikátor
+#   type            — service_kind (img/tts/stt/video/llm/orch) pro routing
+#   mode            — režim stroje, volitelné (legacy)
+#   gpus            — seznam GPU indexů, [0,1] = GPU lock; [] = CPU
+#   compose_dir     — adresář s docker-compose projektem (relativní od masteru)
+#   compose_file    — název compose souboru
+#   compose_service — název služby v compose
+#   port            — port služby na stroji (informativní)
+#   healthcheck     — URL pro health check
+#   webui           — volitelný WebUI registrace (compile-time discovery)
+
+services:
+  # ── IMG (ComfyUI) — vestavěný ComfyUI WebUI na :8189 ──
+  - id: comfyui
+    type: img
+    gpus: [0, 1]
+    compose_dir: /home/hermes/local-ai-stack
+    compose_file: docker-compose.yml
+    compose_service: comfyui
+    port: 8188
+    healthcheck: http://127.0.0.1:8188/health
+    webui:
+      url: http://{machine_ip}:8189
+      label: "ComfyUI Workflows"
+      icon: 🎨
+      type: native
+      path: /
+
+  # ── TTS (MOSS) — engine sdílený s comfyui, žádný standalone UI ──
+  - id: moss-tts
+    type: tts
+    gpus: [0, 1]
+    compose_dir: /home/hermes/local-ai-stack
+    compose_file: docker-compose.yml
+    compose_service: comfyui
+    port: 8188
+    healthcheck: http://127.0.0.1:8188/health
+    webui: null   # TTS nemá standalone UI, volá se přes Hub-UI
+
+  # ── STT (faster-whisper) — OpenAI-compat Swagger na :5007/docs ──
+  - id: stt-service
+    type: stt
+    gpus: [0]
+    compose_dir: /home/hermes/local-ai-stack
+    compose_file: docker-compose.yml
+    compose_service: stt-service
+    port: 5007
+    healthcheck: http://127.0.0.1:5007/health
+    webui:
+      url: http://{machine_ip}:5007/docs
+      label: "faster-whisper API"
+      icon: 📝
+      type: swagger
+      path: /docs
+
+  # ── VIDEO (ComfyUI image2video workflows) — sdílí WebUI s IMG ──
+  - id: comfyui-video
+    type: video
+    gpus: [0, 1]
+    compose_dir: /home/hermes/local-ai-stack
+    compose_file: docker-compose.yml
+    compose_service: comfyui
+    port: 8188
+    healthcheck: http://127.0.0.1:8188/health
+    webui:
+      url: http://{machine_ip}:8189
+      label: "ComfyUI Workflows"
+      icon: 🎬
+      type: native
+      path: /
+      shared_with: comfyui   # sdílí URL s IMG
+
+  # ── LLM (llama.cpp) — llama-ui (SvelteKit) na :8080/ ──
+  - id: qwen
+    type: llm
+    gpus: [0]
+    compose_dir: /home/hermes/local-ai-stack
+    compose_file: docker-compose.yml
+    compose_service: qwen
+    port: 8080
+    healthcheck: http://127.0.0.1:8080/health
+    webui:
+      url: http://{machine_ip}:8080
+      label: "Qwen (llama.cpp WebUI)"
+      icon: 🤖
+      type: native
+      path: /
+
+  # ── LLM (llama.cpp) — alternativní backend, jen aiworker ──
+  - id: ornith
+    type: llm
+    gpus: [1]
+    compose_dir: /home/hermes/local-ai-stack
+    compose_file: docker-compose.yml
+    profiles: [aiworker]
+    compose_service: ornith
+    port: 8081
+    healthcheck: http://127.0.0.1:8081/health
+    webui:
+      url: http://{machine_ip}:8081
+      label: "Ornith (llama.cpp WebUI)"
+      icon: 🦜
+      type: native
+      path: /
+
+  # ── Hub-UI (master) — SPA na :8288 ──
+  - id: hub-ui
+    type: orch
+    gpus: []
+    compose_dir: /home/hermes/local-ai-stack
+    compose_file: docker-compose.yml
+    compose_service: hub-ui
+    port: 8288
+    healthcheck: http://127.0.0.1:8288/health
+    webui:
+      url: http://{machine_ip}:8288
+      label: "Hub-UI (master)"
+      icon: 🖥️
+      type: native
+      path: /

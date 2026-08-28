@@ -1,0 +1,21 @@
+# local-ai-stack — per-kind toggles
+#
+# Toggles řídí jestli routing pro daný kind smí auto-startovat služby
+# v AUTO režimu. MANUAL režim toggle ignoreuje (fail loud 503).
+#
+# Edituj per-cluster podle toho co chceš povolit:
+#   img   — image generation (ComfyUI FLUX/Qwen/Anima/...)
+#   tts   — text-to-speech (MOSS-TTS v1.5)
+#   stt   — speech-to-text (faster-whisper)
+#   vid   — video generation (ComfyUI Sana/Anima/img2vid)
+#   llm   — large language model (llama.cpp)
+#   orch  — orchestrace (Hub-UI master, vždy true)
+
+machine: ${MACHINE_ID:-aiworker}
+toggles:
+  img: true
+  tts: true
+  stt: true
+  vid: true
+  llm: true
+  orch: true
