@@ -129,25 +129,34 @@ services:
       retries: 5
       start_period: 120s
 
-  # ── STT (faster-whisper) — volitelný, jen stroje kde má smysl ──
-  stt-service:
-    image: ghcr.io/021dev/faster-whisper-server-public:latest
-    profiles: [aicore, codebox]   # STT běží jen tam kde je GPU/CPU dost
-    container_name: stt-${MACHINE_ID}
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      - WHISPER_MODEL=large-v3
-      - WHISPER_DEVICE=cuda
-    volumes:
-      - ${MODEL_DIR:-/mnt/models}/faster-whisper:/root/.cache/huggingface:rw
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["${GPU_DEVICE_ID:-0}"]
-              capabilities: [gpu]
+  # ── STT (faster-whisper) — Docker image: ghcr.io/021dev/faster-whisper-server-public
+  # Docker image je public, ale pokud GHCR credentials chybí, pull selže.
+  # Proto docker service je defaultně VYPNUTÝ (profile: []). STT běží
+  # externě na aicore:5007, aiworker:5007 (atd.) — viz hub-agent/services.yaml
+  # a WebUI discovery to prolinkuje.
+  #
+  # Pro zapnutí: odkomentuj blok níže + přidej 'codebox' do profiles.
+  # Případně nahrad image za lokálně builtovaný Dockerfile (např. z comfyui-unified
+  # STT-image repo, budoucí).
+  #
+  # stt-service:
+  #   image: ghcr.io/021dev/faster-whisper-server-public:latest
+  #   profiles: [codebox]   # jen codebox (kde není jiný STT)
+  #   container_name: stt-${MACHINE_ID}
+  #   restart: unless-stopped
+  #   network_mode: host
+  #   environment:
+  #     - WHISPER_MODEL=large-v3
+  #     - WHISPER_DEVICE=cuda
+  #   volumes:
+  #     - ${MODEL_DIR:-/mnt/models}/faster-whisper:/root/.cache/huggingface:rw
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             device_ids: ["${GPU_DEVICE_ID:-0}"]
+  #             capabilities: [gpu]
 
   # ── Hub-UI (master) — FastAPI backend + SPA ──────────────
   hub-ui:
