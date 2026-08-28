@@ -1,146 +1,112 @@
-# Session 2026-08-28 — local-ai-stack setup
+# Session 2026-08-28 — local-ai-stack setup (kompletní den)
 
-> **Stav:** ✅ Master repo `ystrem/local-ai-stack` pushnuto (16 commitů).
-> End-to-end test na aiworkeru prošel — `/api/webui/registry` vrací plný JSON
-> s compile-time + runtime WebUI discovery. aicore test čeká na SSH přístup.
-
----
-
-## Cíl dnešní session
-
-Master repo s **hub-ui** + **service router** pro 5 typů AI služeb
-(LLM, IMG, TTS, STT, VIDEO) nad `comfyui-unified` + `local-ai-coding-servers`
-(oba jako git submoduly, **beze změn**). Hub-UI master řídí přepínací logiku,
-oba enginová repa poskytují služby.
+> **Stav:** ✅ Master repo `ystrem/local-ai-stack` plně funkční na aicore + aiworker.
+> ✅ IMG generování funguje (HTTP 200, PNG 512×512). ✅ LLM běží (qwen na GPU 0).
+> ✅ WebUI discovery funguje. ✅ Modely výhradně z NFS. 30+ commitů.
 
 ---
 
-## Výsledek
+## Co se dnes udělalo (chronologicky)
 
-### Commity (master `ystrem/local-ai-stack`)
+### 1. Content-factory image gen (původní cíl)
+- `pipelines/shared/image_gen.py` + `pipelines/reddit-story/image.py` — univerzální
+  image gen přes ComfyUI `/generate` (kind=image), NSFW guard, safelist
+- GHA `reddit-story-shorts.yml` — step Generate image, inputs.image_model
+- Testováno na aiworkeru — PNG 832×1472, determinismus, Telegram odeslání
 
-| SHA | Zpráva |
-|---|---|
-| `5ef466a` | init: submoduly |
-| `d068149` | docs: README, ARCHITECTURE, .env.example, .gitignore |
-| `619eb50` | feat: docker-compose master orchestrace |
-| `b16eeb6` | feat: hub-agent services + toggles (s WebUI registry) |
-| `8fb50f2` | feat: scripts/install.sh |
-| `6eb3f27` | feat: hub-ui/backend (router + WebUI discovery) |
-| `a48a237` | feat: hub-ui/frontend (STT/VIDEO/LLM tabs + WebUI nav) |
-| `5d68e5d` | feat: hub-ui/machines registry |
-| `4eeb263` | chore: bump comfyui-unified submodule |
-| `bd2c19d` | fix: app.py router imports + COMFYUI_HOST env |
-| `d0cd507` | fix: python-multipart pro STT UploadFile |
-| `8b37d21` | fix: explicit env_file v docker-compose |
-| `db3a972` | fix: mount services.yaml do kontejneru |
-| `ed67e34` | fix: services.yaml path default |
-| `2d73465` | fix: HUB_SERVICES_FILE env override |
-| `f3b48f4` | fix: sloučení environment bloků |
+### 2. local-ai-stack master repo (nový)
+- Orchestrace nad `comfyui-unified` + `local-ai-coding-servers` (submoduly)
+- Hub-UI (FastAPI + SPA, port 8288) — 5 service tabs (LLM/IMG/TTS/STT/VIDEO)
+- Service router — `/api/proxy/{kind}/generate` pro 5 typů
+- WebUI discovery — compile-time (services.yaml) + runtime (HEAD/GET probe)
+- install.sh — auto-detect GPU, IP, generuje .env + machines.yaml
 
-### Commity (submodule `comfyui-unified`)
+### 3. Porty (kolize fix)
+- qwen: 8080 → **8085** (qbittorrent držel 8080 na aicore)
+- ornith: 8081 → **8086** (filebrowser držel 8081)
+- qwen-split: 8082 → **8087** (rezervováno)
+- ornith-split: 8083 → **8088** (rezervováno)
 
-| SHA | Zpráva |
-|---|---|
-| `140fa51` | refactor: smazán api-wrapper/ + webapp/ (přesunuto do local-ai-stack) |
+### 4. GPU rozdělení (OOM fix)
+- aiworker (2× 5060 Ti): qwen → GPU 0, comfyui → **GPU 1** (`COMFYUI_GPU_ID=1`)
+- aicore/desktop (1× GPU): oba → GPU 0 (on-demand střídání)
+- Před fixem: qwen (15 GB) + comfyui (14 GB) na GPU 0 → OOM
+  (`[ERROR] Got an OOM, unloading all loaded models`)
+
+### 5. LLM model registry
+- `llm_registry.json` — 10 modelů na NFS (analogie model_registry.json pro IMG)
+- `scripts/llm-select.sh` — výběr: QWEN_MODEL_ID override → GPU arch → VRAM → NFS existence → priority
+- install.sh — žádné hardcoded modely, vše z registru
+
+### 6. Modely VŽDY z NFS
+- `/mnt/models` je jediné úložiště modelů (sdílené přes síť)
+- Žádný lokální download — download-models.sh default `/mnt/models` root
+- NFS skip: `⏭ Qwen3.8-27B-UD-IQ4_XS.gguf už existuje — přeskočeno`
 
 ---
 
-## End-to-end test (aiworker, RTX 5060 Ti)
+## Aktuální stav (konec dne)
 
-Vše 4 nové kontejnery běží:
+### AIWORKER (192.168.10.194, 2× 5060 Ti)
+| Služba | Port | GPU | Status |
+|---|---|---|---|
+| comfyui-aiworker | 8188/8189 | GPU 1 | ✅ healthy, IMG gen funguje |
+| qwen-aiworker | 8085 | GPU 0 | ✅ běží (NVFP4, 15 GB) |
+| hub-ui-aiworker | 8288 | — | ✅ healthy |
+| hub-agent-aiworker | 8199 | — | ✅ healthy |
 
-| Služba | Port | Status |
-|---|---|---|
-| `comfyui-aiworker` | 8188, 8189 | ✅ running, healthy |
-| `qwen-aiworker` | 8080 | ✅ running, health: starting |
-| `hub-agent-aiworker` | 8199 | ✅ running, capabilities OK |
-| `hub-ui-aiworker` | 8288 | ✅ running, healthy |
+### AICORE (192.168.10.60, P40)
+| Služba | Port | GPU | Status |
+|---|---|---|---|
+| comfyui-aicore | 8188/8189 | GPU 0 | ✅ healthy (14 modelů) |
+| qwen-aicore | 8085 | GPU 0 | ✅ běží (Q4_K_M, loaduje) |
+| hub-ui-aicore | 8288 | — | ✅ healthy |
+| hub-agent-aicore | 8199 | — | ✅ healthy |
+| stt-service (externí) | 5007 | GPU 0 | ✅ běží (faster-whisper) |
 
-### Klíčové endpointy
+### Master repo (github.com/ystrem/local-ai-stack)
+- 30+ commitů, HEAD = `50405b2` (GPU split fix)
+- Submoduly: comfyui-unified @ 140fa51, local-ai-coding-servers @ f4510c5
 
-**`GET /api/health`** (200 OK):
-```json
-{
-  "service_status": "ok",
-  "model_loaded": true,
-  "gpu": {"name": "NVIDIA GeForce RTX 5060 Ti", "vram_total_mb": 16311},
-  "image_models": ["flux-dev-nvfp4", "flux2-klein-q6k", ..., "anima-base-native", ...],
-  "tts_models": ["moss-tts-v1.5", "moss-voicegenerator", "qwen3-tts-1.7b-customvoice"]
-}
+---
+
+## Klíčové lekce
+
+1. **force-recreate je povinný** — mountnuté soubory (server.py) se bez
+   `--force-recreate` nenačtou do běžícího kontejneru. install.sh ho teď dělá.
+2. **Modely VŽDY z NFS** — žádný lokální download, NFS je jediný zdroj pravdy.
+3. **Žádné hardcoded modely** — LLM má registry (llm_registry.json) stejně jako IMG.
+4. **GPU rozdělení per stroj** — aiworker: qwen GPU 0 + comfyui GPU 1; aicore: on-demand.
+5. **Porty musí být unikátní per stroj** — 8080/8081 kolize s qbittorrent/filebrowser.
+6. **Submodule ref musí být github-dostupný** — lokální commity (gitea) rozbijí `git clone`.
+
+---
+
+## Testy pro ověření
+
+```bash
+# IMG generování (aiworker, GPU 1)
+curl -X POST http://localhost:8188/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"flux2-klein-q6k","prompt":"test image","seed":42,"width":512,"height":512}' \
+  -o /tmp/test.png
+# → HTTP 200, PNG 512×512
+
+# LLM (aiworker/aicore, port 8085)
+curl http://localhost:8085/health
+
+# WebUI discovery
+curl http://localhost:8288/api/webui/registry | python3 -m json.tool
+
+# Hub-UI
+curl http://localhost:8288/api/health
 ```
-
-**`GET /api/webui/registry`** (compile-time + runtime WebUI discovery):
-
-Vrací JSON pole s WebUI pro každý stroj. Příklad:
-```json
-[
-  {"id": "comfyui", "machine": "aicore", "type": "img",
-   "url": "http://192.168.10.60:8189", "label": "ComfyUI Workflows",
-   "icon": "🎨", "ui_type": "native", "running": true},
-  {"id": "stt-service", "machine": "aicore", "type": "stt",
-   "url": "http://192.168.10.60:5007/docs", "label": "faster-whisper API",
-   "icon": "📝", "ui_type": "swagger", "running": true},
-  {"id": "comfyui-video", "machine": "aiworker", "type": "video",
-   "url": "http://192.168.10.194:8189", "label": "ComfyUI Workflows",
-   "icon": "🎬", "ui_type": "native", "running": true,
-   "shared_with": "comfyui"}
-]
-```
-
-WebUI discovery funguje:
-- Compile-time: `services.yaml` s `webui: {url, label, icon, type, path}` + `{machine_ip}` templating
-- Runtime: HEAD/GET ping každého URL, `running: true/false` podle odpovědi
-- Cache: 30s TTL
-
----
-
-## Bugy opravené během testu
-
-| # | Problém | Fix |
-|---|---|---|
-| 1 | app.py neměl include_router pro stt/video/llm/webui | přidány importy + 4 router includes |
-| 2 | `os.environ.get("COMFYUI_UNIFIED_URL", "http://comfyui-unified:8188")` — hardcoded špatné jméno | env overridable + `COMFYUI_HOST=comfyui-${MACHINE_ID}` |
-| 3 | STT UploadFile vyžaduje python-multipart | přidáno do requirements.txt |
-| 4 | Docker Compose 5.4.0 na některých systémech nenačítá `.env` automaticky | explicitní `env_file: - .env` + `x-common-env` anchor |
-| 5 | `services.yaml` mountnutý do `/app/hub-agent/services.yaml`, ale code hledal relativní `hub-agent/services.yaml` | mount + default path opraven |
-| 6 | `HUB_SERVICES_FILE` env nenastaveno | explicitní env override |
-| 7 | Duplicitní `environment:` blok v docker-compose.yml (YAML parse error) | sloučeno do jednoho bloku |
-
----
-
-## CACHE_TYPE_K=f16 (P40) — opakované upozornění
-
-V `docker-compose.yml` (master orchestrace) je v qwen příkazu hardcoded:
-```yaml
-- "--cache-type-k"
-- "f16"  # P40: f16 POVINNOST (q4_0 → garbage, benchmark 19.8.2026)
-```
-
-`q4_0` K-cache na P40 generuje **prázdný `content` (garbage output)** —
-benchmark 19.8.2026 v `local-ai-coding-servers/docs/benchmark-2xp40-dflash2-mtp-2026-08-19.md`.
-`f16` není o rychlosti, je o **korektnosti**. KEEP IT f16.
-
----
-
-## Známé bugy a TODO v `local-ai-stack`
-
-| Issue | Stav | Workaround |
-|---|---|---|
-| `install.sh` negeneruje `machines.yaml` | TODO | ručně `cp machines.example.yaml machines.yaml` + `sed` env |
-| SSH z aiworkeru na aicore nefunguje | není bug | operátor musí běžet `install.sh` lokálně na aicore |
-| `hub-agent` capabilities nezahrnují `webui` field | TODO | přidat do `comfyui-unified/hub-agent/main.py` |
-| `--no-build` a `--no-up` flagy v `install.sh` testovány | OK | fungují |
 
 ---
 
 ## Reference
 
-- Plán: `.commandcode/plans/local-ai-stack-merge.md` (19 sekcí, schválený)
-- Submoduly: `comfyui-unified` (master), `local-ai-coding-servers` (main)
-- Test: `/home/hermes/local-ai-stack-test/` (lze smazat)
-- Hub-UI port: 8288
-- Hub-agent port: 8199
-- ComfyUI porty: 8188 (API), 8189 (WebUI)
-- Qwen port: 8080
-- STT port: 5007
+- Plány: `.commandcode/plans/local-ai-stack-merge.md`, `.commandcode/plans/llm-model-registry.md`
+- TODO: `docs/TODO.md`
+- Test IMG gen: HTTP 200, PNG 512×512 (286 KB), seed=42, flux2-klein-q6k
+- Content-factory: `pipelines/reddit-story/image.py` + `docs/sessions/2026-08-28-image-gen.md`
