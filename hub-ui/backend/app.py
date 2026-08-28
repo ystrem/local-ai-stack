@@ -31,16 +31,26 @@ from pydantic import BaseModel
 import hub as hub_module
 from hub import hub_router
 from proxy import proxy_router
+from stt import stt_router
+from video import video_router
+from llm import llm_router
+from webui_registry import webui_router
 
 log = logging.getLogger("comfyui-webapp")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 app = FastAPI(title="ComfyUI Unified Webapp", version="1.0.0")
-# HUB router musí být mountnut na úrovni modulu (startup handler je pro routing pozdě)
+# Routers (order matters — specific paths first)
 app.include_router(hub_router)
 app.include_router(proxy_router)
+app.include_router(stt_router)
+app.include_router(video_router)
+app.include_router(llm_router)
+app.include_router(webui_router)
 
-BACKEND_URL = os.environ.get("COMFYUI_UNIFIED_URL", "http://comfyui-unified:8188").rstrip("/")
+# Per-machine: container name je comfyui-${MACHINE_ID} v master docker-compose
+COMFYUI_HOST = os.environ.get("COMFYUI_HOST", "comfyui-aiworker")
+BACKEND_URL = os.environ.get("COMFYUI_UNIFIED_URL", f"http://{COMFYUI_HOST}:8188").rstrip("/")
 DB_PATH = Path(os.environ.get("WEBAPP_DB", "/data/webapp.db"))
 WEBAPP_DIR = Path(os.environ.get("WEBAPP_DIR", "webapp"))
 OUTPUT_DIR = Path(os.environ.get("WEBAPP_OUTPUT_DIR", "/data/outputs"))
