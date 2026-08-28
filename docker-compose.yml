@@ -118,15 +118,16 @@ services:
       - "--jinja"
       - "--host"
       - "0.0.0.0"
+      # QWEN_PORT 8085 (ne 8080 — qbittorrent drží 8080 na aicore)
       - "--port"
-      - "${QWEN_PORT:-8080}"
+      - "${QWEN_PORT:-8085}"
       - "--threads"
       - "${THREADS:-8}"
       - "--parallel"
       - "1"
     healthcheck:
       # Python3 místo curl (curl není v llama.cpp image)
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:${QWEN_PORT:-8080}/health')\" || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:${QWEN_PORT:-8085}/health')\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -80,17 +80,17 @@ services:
       path: /
       shared_with: comfyui   # sdílí URL s IMG
 
-  # ── LLM (llama.cpp) — llama-ui (SvelteKit) na :8080/ ──
+  # ── LLM (llama.cpp) — llama-ui (SvelteKit) na :8085/ ──
   - id: qwen
     type: llm
     gpus: [0]
     compose_dir: /home/hermes/local-ai-stack
     compose_file: docker-compose.yml
     compose_service: qwen
-    port: 8080
-    healthcheck: http://127.0.0.1:8080/health
+    port: 8085
+    healthcheck: http://127.0.0.1:8085/health
     webui:
-      url: http://{machine_ip}:8080
+      url: http://{machine_ip}:8085
       label: "Qwen (llama.cpp WebUI)"
       icon: 🤖
       type: native
@@ -104,10 +104,10 @@ services:
     compose_file: docker-compose.yml
     profiles: [aiworker]
     compose_service: ornith
-    port: 8081
-    healthcheck: http://127.0.0.1:8081/health
+    port: 8086
+    healthcheck: http://127.0.0.1:8086/health
     webui:
-      url: http://{machine_ip}:8081
+      url: http://{machine_ip}:8086
       label: "Ornith (llama.cpp WebUI)"
       icon: 🦜
       type: native

@@ -155,7 +155,7 @@ COMFYUI_EXTRA_ARGS=$COMFYUI_EXTRA_ARGS
 MODEL_DIR=/mnt/models
 QWEN_MODEL=$QWEN_MODEL
 QWEN_MODEL_ID=$QWEN_MODEL_ID
-QWEN_PORT=8080
+QWEN_PORT=8085
 CTX_SIZE=$CTX_SIZE
 CACHE_TYPE_K=$CACHE_TYPE_K
 CACHE_TYPE_V=$CACHE_TYPE_V
@@ -240,7 +240,7 @@ echo "=== Hotovo ==="
 echo "  Stroj: $MACHINE_ID ($GPU_NAME) @ $MY_IP"
 echo "  Hub-UI:    http://localhost:8288"
 echo "  ComfyUI:   http://localhost:8188 (API), http://localhost:8189 (WebUI)"
-echo "  Qwen:      http://localhost:8080"
+echo "  Qwen:      http://localhost:8085"
 echo "  Agent:     http://localhost:8199/capabilities"
 echo "  WebUI discovery: http://localhost:8288/api/webui/registry"
 echo ""

@@ -1,6 +1,6 @@
 """LLM router — proxy /api/proxy/llm/chat pro coding agenty.
 
-FALLBACK CHAIN: aiworker:8080 → aicore:8080 → ollama:11435
+FALLBACK CHAIN: aiworker:8085 → aicore:8085 → ollama:11435
 """
 import logging
 from fastapi import APIRouter, HTTPException

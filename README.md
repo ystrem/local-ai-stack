@@ -25,16 +25,16 @@ Skript:
 
 | Stroj | GPU | Defaultní služby | WebUI |
 |---|---|---|---|
-| aicore (P40 Pascal sm_61) | 1× P40 24GB | comfyui (IMG+TTS+VIDEO), qwen (LLM), hub-agent | ComfyUI @ :8189, llama-ui @ :8080 |
-| aiworker (Blackwell sm_120) | 2× 5060 Ti 16GB | + ornith (LLM), qwen-split profil, ollama | + llama-ui ornitha @ :8081 |
-| desktop (3070 Ampere / 6800XT ROCm) | 1× | + ollama | llama-ui @ :8080 |
+| aicore (P40 Pascal sm_61) | 1× P40 24GB | comfyui (IMG+TTS+VIDEO), qwen (LLM), hub-agent | ComfyUI @ :8189, llama-ui @ :8085 |
+| aiworker (Blackwell sm_120) | 2× 5060 Ti 16GB | + ornith (LLM), qwen-split profil, ollama | + llama-ui ornitha @ :8086 |
+| desktop (3070 Ampere / 6800XT ROCm) | 1× | + ollama | llama-ui @ :8085 |
 | codebox (notebook) | CPU | coding agents (OpenCode + Pi) | — |
 
 ## Service routing (5 typů)
 
 | Kind | Engine | Kde běží | Fallback | WebUI |
 |---|---|---|---|---|
-| LLM | llama.cpp (qwen, ornith) | aiworker > aicore | ollama | llama-ui (SvelteKit) @ :8080 |
+| LLM | llama.cpp (qwen, ornith) | aiworker > aicore | ollama | llama-ui (SvelteKit) @ :8085 |
 | IMG | ComfyUI (flux2-klein, qwen-image, ...) | aicore > aiworker | desktop | ComfyUI vestavěný @ :8189 |
 | TTS | MOSS-TTS v1.5, qwen3-tts | aicore > aiworker | edge-tts | (žádný standalone UI) |
 | STT | faster-whisper large-v3 | aicore | — | OpenAI-compat Swagger @ :5007/docs |
@@ -71,7 +71,7 @@ stroje v clusteru.
 
 ```
 🖥️  Hub-UI @ aicore          → http://192.168.10.60:8288
-🤖  Qwen UI @ aiworker        → http://192.168.10.194:8080
+🤖  Qwen UI @ aiworker        → http://192.168.10.194:8085
 🎨  ComfyUI Workflows @ aicore → http://192.168.10.60:8189
 📝  faster-whisper API @ aicore → http://192.168.10.60:5007/docs
 🎬  ComfyUI Workflows @ aicore → http://192.168.10.60:8189 (shared)
