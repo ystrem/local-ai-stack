@@ -42,27 +42,70 @@ fi
 git submodule update --init --recursive
 
 # ── 2) Auto-detekce GPU ─────────────────────────────────
-# Fallback řetězec: nvidia-smi → rocm-smi → lspci. Detekujeme jakoukoliv
-# použitelnou GPU, necháme case vybere MACHINE_ID podle toho. Pokud selžou
-# všechny tři, vypíšeme co má operátor doinstalovat (NVIDIA driver / ROCm).
+# Fallback řetězec: nvidia-smi → rocm-smi → lspci → /sys/class/drm. Detekujeme
+# jakoukoliv použitelnou GPU, necháme case vybere MACHINE_ID podle toho.
+# POZOR: set -e + pipefail NESMÍ zabít skript na prázdném pipeline výstupu.
+# Proto každý detektor obalíme `|| true` a výsledek testujeme explicitně.
 GPU_NAME=""
-if command -v nvidia-smi &>/dev/null; then
-  GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
-  # nvidia-smi občas vrátí chybovou hlášku místo názvu karty (driver mrtvý)
-  if [ -z "$GPU_NAME" ] || echo "$GPU_NAME" | grep -qi "couldn.t communicate\|has failed"; then
-    GPU_NAME=""
+
+# Detektor 1: NVIDIA přes nvidia-smi
+if [ -z "$GPU_NAME" ] && command -v nvidia-smi >/dev/null 2>&1; then
+  _nv="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || true)"
+  if [ -n "$_nv" ] && ! echo "$_nv" | grep -qiE "couldn.t communicate|has failed|NVIDIA-SMI has failed"; then
+    GPU_NAME="$_nv"
   fi
+  unset _nv
 fi
-if [ -z "$GPU_NAME" ] && command -v rocm-smi &>/dev/null; then
-  GPU_NAME="$(rocm-smi --showproductname 2>/dev/null | grep -E "^[0-9]+:" | head -1 | sed -E 's/^[[:space:]]*[0-9]+:[[:space:]]*//')"
+
+# Detektor 2: AMD přes rocm-smi
+if [ -z "$GPU_NAME" ] && command -v rocm-smi >/dev/null 2>&1; then
+  _rc="$(rocm-smi --showproductname 2>/dev/null | grep -E 'Card Series|Card Model|^\s*[0-9]+:' | head -1 || true)"
+  if [ -n "$_rc" ]; then
+    GPU_NAME="$(echo "$_rc" | sed -E 's/^[[:space:]]*[0-9]+:[[:space:]]*//; s/^Card (Series|Model):[[:space:]]*//')"
+  fi
+  unset _rc
 fi
+
+# Detektor 3: lspci (PCI string bez lscpi instalace — viz Detektor 4)
+if [ -z "$GPU_NAME" ] && command -v lspci >/dev/null 2>&1; then
+  _lspci="$(lspci 2>/dev/null | grep -iE 'vga|3d|display' | head -1 || true)"
+  if [ -n "$_lspci" ]; then
+    GPU_NAME="$(echo "$_lspci" | sed -E 's/^[^:]+:[[:space:]]*//')"
+  fi
+  unset _lspci
+fi
+
+# Detektor 4: /sys/class/drm — vždy existuje na Linuxu, žádná závislost
 if [ -z "$GPU_NAME" ]; then
-  GPU_NAME="$(lspci 2>/dev/null | grep -iE "vga|3d|display" | head -1 | sed -E 's/^[^:]+:[[:space:]]*//')"
+  for card in /sys/class/drm/card[0-9]*/device/vendor; do
+    [ -r "$card" ] || continue
+    _vendor="$(cat "$card" 2>/dev/null || true)"
+    case "$_vendor" in
+      0x1002)  # AMD
+        _device="$(cat "$(dirname "$card")/device/device" 2>/dev/null || true)"
+        # RDNA2: 0x73BF = Navi 21 (6800/6900), 0x73DF = Navi 22, 0x73FF = Navi 23
+        # RDNA3: 0x744C = Navi 31 (7900XTX), 0x745E = Navi 32, 0x7480 = Navi 33
+        case "$_device" in
+          0x73bf|0x73bf[0-9a-f]) GPU_NAME="AMD Radeon RX 6800 XT" ;;
+          0x744c|0x744c[0-9a-f]) GPU_NAME="AMD Radeon RX 7900 XTX" ;;
+          0x745e|0x745e[0-9a-f]) GPU_NAME="AMD Radeon RX 7900 XT" ;;
+          *)                      GPU_NAME="AMD Radeon (RDNA2/RDNA3)" ;;
+        esac
+        break
+        ;;
+      0x10de)  # NVIDIA — sémantika PCI ID, detekujeme v repu
+        GPU_NAME="NVIDIA GPU"
+        break
+        ;;
+    esac
+  done
 fi
+
 if [ -z "$GPU_NAME" ]; then
-  echo "ERROR: žádná GPU detekována (nvidia-smi, rocm-smi ani lspci VGA)" >&2
-  echo "  Pro NVIDIA: nainstaluj nvidia-driver (apt install nvidia-driver-560)" >&2
-  echo "  Pro AMD:    nainstaluj ROCm (amdgpu-install --usecase=rocm)" >&2
+  echo "ERROR: žádná GPU detekována" >&2
+  echo "  Zkoušel jsem: nvidia-smi, rocm-smi, lspci, /sys/class/drm" >&2
+  echo "  Pro NVIDIA: pacman -S nvidia-dkms   (CachyOS) /  apt install nvidia-driver-560  (Debian)" >&2
+  echo "  Pro AMD:    pacman -S rocm-hip-sdk   (CachyOS) /  amdgpu-install --usecase=rocm  (Debian)" >&2
   exit 1
 fi
 echo "  GPU: $GPU_NAME"
