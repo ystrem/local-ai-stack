@@ -70,7 +70,9 @@ fi
 if [ -z "$GPU_NAME" ] && command -v lspci >/dev/null 2>&1; then
   _lspci="$(lspci 2>/dev/null | grep -iE 'vga|3d|display' | head -1 || true)"
   if [ -n "$_lspci" ]; then
-    GPU_NAME="$(echo "$_lspci" | sed -E 's/^[^:]+:[[:space:]]*//')"
+    # Formát: "07:00.0 VGA compatible controller: AMD/NVIDIA ..."
+    # Chceme všechno za PRVNÍ ": " (PCI ID + class code), ne za libovolnou ":"
+    GPU_NAME="$(echo "$_lspci" | sed -E 's/^[0-9a-fA-F:.]+[[:space:]]+[A-Za-z][^:]*:[[:space:]]*//')"
   fi
   unset _lspci
 fi
@@ -93,8 +95,10 @@ if [ -z "$GPU_NAME" ]; then
         esac
         break
         ;;
-      0x10de)  # NVIDIA — sémantika PCI ID, detekujeme v repu
-        GPU_NAME="NVIDIA GPU"
+      0x10de)  # NVIDIA — nvidia-smi selhal, ale PCI vendor sedí
+        GPU_NAME="NVIDIA GPU (nvidia-smi nedostupný)"
+        echo "  WARN: NVIDIA PCI vendor detekován, ale nvidia-smi nefunguje" >&2
+        echo "        nainstaluj nvidia-driver (pacman -S nvidia-dkms)" >&2
         break
         ;;
     esac

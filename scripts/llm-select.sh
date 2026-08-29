@@ -19,16 +19,92 @@ cd "$(dirname "$0")/.."
 REGISTRY="${LLM_REGISTRY:-llm_registry.json}"
 MODEL_DIR="${MODEL_DIR:-/mnt/models}"
 
-command -v nvidia-smi >/dev/null 2>&1 || { echo "ERROR: nvidia-smi chybí" >&2; exit 1; }
-GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
-VRAM_MB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader | head -1 | grep -o '[0-9]*' || echo 8192)"
+# GPU detekce — stejná logika jako install.sh: nvidia-smi → rocm-smi → lspci
+# → /sys/class/drm. Na AMD strojích bez ROCm userspace musíme umět fallback.
+GPU_NAME=""
+VRAM_MB=0
 
+# 1) nvidia-smi
+if [ -z "$GPU_NAME" ] && command -v nvidia-smi >/dev/null 2>&1; then
+  _nv="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || true)"
+  if [ -n "$_nv" ] && ! echo "$_nv" | grep -qiE "couldn.t communicate|has failed|NVIDIA-SMI has failed"; then
+    GPU_NAME="$_nv"
+    _vram_raw="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1 || true)"
+    VRAM_MB="$(echo "$_vram_raw" | grep -oE '[0-9]+' | head -1 || echo 0)"
+  fi
+  unset _nv _vram_raw
+fi
+
+# 2) rocm-smi
+if [ -z "$GPU_NAME" ] && command -v rocm-smi >/dev/null 2>&1; then
+  _rc="$(rocm-smi --showproductname 2>/dev/null | grep -E 'Card Series|Card Model|^\s*[0-9]+:' | head -1 || true)"
+  if [ -n "$_rc" ]; then
+    GPU_NAME="$(echo "$_rc" | sed -E 's/^[[:space:]]*[0-9]+:[[:space:]]*//; s/^Card (Series|Model):[[:space:]]*//')"
+    _vram_raw="$(rocm-smi --showmeminfo vram 2>/dev/null | grep -E 'Total Memory' | awk '{print $4}' | head -1 || true)"
+    VRAM_MB="$(echo "$_vram_raw" | grep -oE '[0-9]+' | head -1 || echo 0)"
+  fi
+  unset _rc _vram_raw
+fi
+
+# 3) lspci (jen název karty; VRAM neznáme)
+if [ -z "$GPU_NAME" ] && command -v lspci >/dev/null 2>&1; then
+  _lspci="$(lspci 2>/dev/null | grep -iE 'vga|3d|display' | head -1 || true)"
+  if [ -n "$_lspci" ]; then
+    GPU_NAME="$(echo "$_lspci" | sed -E 's/^[^:]+:[[:space:]]*//')"
+  fi
+  unset _lspci
+fi
+
+# 4) /sys/class/drm — vendor 0x1002 = AMD, 0x10de = NVIDIA. Device ID →
+# marketing name + typický VRAM (heuristika, ne dokonalé).
+if [ -z "$GPU_NAME" ]; then
+  for card in /sys/class/drm/card[0-9]*/device; do
+    [ -r "$card/vendor" ] || continue
+    _vendor="$(cat "$card/vendor" 2>/dev/null || true)"
+    case "$_vendor" in
+      0x1002)
+        _device="$(cat "$card/device" 2>/dev/null || true)"
+        case "$_device" in
+          0x73bf|0x73bf[0-9a-f]) GPU_NAME="Radeon RX 6800/6800 XT / 6900 XT (Navi 21)"; VRAM_MB=16384 ;;
+          0x73df|0x73df[0-9a-f]) GPU_NAME="Radeon RX 6700/6700 XT (Navi 22)";        VRAM_MB=12288 ;;
+          0x73ff|0x73ff[0-9a-f]) GPU_NAME="Radeon RX 6600/6600 XT (Navi 23)";        VRAM_MB=8192  ;;
+          0x744c|0x744c[0-9a-f]) GPU_NAME="Radeon RX 7900 XTX (Navi 31)";            VRAM_MB=24576 ;;
+          0x745e|0x745e[0-9a-f]) GPU_NAME="Radeon RX 7900 XT (Navi 32)";             VRAM_MB=20480 ;;
+          0x7480|0x7480[0-9a-f]) GPU_NAME="Radeon RX 7600 (Navi 33)";                VRAM_MB=8192  ;;
+          *)                      GPU_NAME="AMD Radeon";                              VRAM_MB=8192  ;;
+        esac
+        break
+        ;;
+      0x10de)
+        GPU_NAME="NVIDIA GPU"
+        break
+        ;;
+    esac
+  done
+fi
+
+if [ -z "$GPU_NAME" ]; then
+  echo "ERROR: žádná GPU detekována (zkoušel jsem nvidia-smi, rocm-smi, lspci, /sys/class/drm)" >&2
+  exit 1
+fi
+
+if [ "$VRAM_MB" -eq 0 ]; then
+  echo "WARN: VRAM nezjištěna, defaultuji na 8192 MB (8 GB)" >&2
+  VRAM_MB=8192
+fi
+
+# Map GPU name → arch pro registry lookup
 case "$GPU_NAME" in
   *P40*)   ARCH=pascal ;;
   *5060*)  ARCH=blackwell ;;
   *3070*)  ARCH=ampere ;;
-  *6800*)  ARCH=rocm ;;
-  *) echo "ERROR: neznámá GPU: $GPU_NAME" >&2; exit 1 ;;
+  *6800*|*6900*|*6700*|*6600*|*7900*|*Navi*|*Radeon*) ARCH=rocm ;;
+  *NVIDIA*|*GeForce*|*RTX*) ARCH=cuda ;;
+  *)
+    echo "ERROR: neznámá GPU architektura: '$GPU_NAME'" >&2
+    echo "  Podporované: P40 (pascal), 5060 (blackwell), 3070 (ampere), 6800/6900/7900 (rocm)" >&2
+    exit 1
+    ;;
 esac
 
 python3 - "$REGISTRY" "$ARCH" "$VRAM_MB" "$MODEL_DIR" "${QWEN_MODEL_ID:-}" <<'PY'
