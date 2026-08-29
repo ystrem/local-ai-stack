@@ -42,8 +42,29 @@ fi
 git submodule update --init --recursive
 
 # ── 2) Auto-detekce GPU ─────────────────────────────────
-command -v nvidia-smi &>/dev/null || { echo "ERROR: nvidia-smi chybí" >&2; exit 1; }
-GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
+# Fallback řetězec: nvidia-smi → rocm-smi → lspci. Detekujeme jakoukoliv
+# použitelnou GPU, necháme case vybere MACHINE_ID podle toho. Pokud selžou
+# všechny tři, vypíšeme co má operátor doinstalovat (NVIDIA driver / ROCm).
+GPU_NAME=""
+if command -v nvidia-smi &>/dev/null; then
+  GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
+  # nvidia-smi občas vrátí chybovou hlášku místo názvu karty (driver mrtvý)
+  if [ -z "$GPU_NAME" ] || echo "$GPU_NAME" | grep -qi "couldn.t communicate\|has failed"; then
+    GPU_NAME=""
+  fi
+fi
+if [ -z "$GPU_NAME" ] && command -v rocm-smi &>/dev/null; then
+  GPU_NAME="$(rocm-smi --showproductname 2>/dev/null | grep -E "^[0-9]+:" | head -1 | sed -E 's/^[[:space:]]*[0-9]+:[[:space:]]*//')"
+fi
+if [ -z "$GPU_NAME" ]; then
+  GPU_NAME="$(lspci 2>/dev/null | grep -iE "vga|3d|display" | head -1 | sed -E 's/^[^:]+:[[:space:]]*//')"
+fi
+if [ -z "$GPU_NAME" ]; then
+  echo "ERROR: žádná GPU detekována (nvidia-smi, rocm-smi ani lspci VGA)" >&2
+  echo "  Pro NVIDIA: nainstaluj nvidia-driver (apt install nvidia-driver-560)" >&2
+  echo "  Pro AMD:    nainstaluj ROCm (amdgpu-install --usecase=rocm)" >&2
+  exit 1
+fi
 echo "  GPU: $GPU_NAME"
 
 case "$GPU_NAME" in
