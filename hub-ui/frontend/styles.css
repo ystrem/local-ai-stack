@@ -277,8 +277,19 @@ html, body {
   outline-offset: -1px;
 }
 
+/* ── Active nav item ── */
+.nav-item.active-view {
+  background: rgba(74, 222, 128, 0.1) !important;
+  border-left: 2px solid var(--accent);
+  color: var(--accent) !important;
+  padding-left: calc(1rem - 2px) !important;
+}
+.nav-item.active-view .material-symbols-outlined {
+  color: var(--accent);
+}
+
 /* ── Mobile layout (<768px): off-canvas sidebar ── */
-#sidebar { transition: transform 0.2s ease; }
+#sidebar { transition: transform 0.2s ease, width 0.2s ease; }
 @media (max-width: 767px) {
   #sidebar {
     transform: translateX(-100%);
@@ -289,6 +300,78 @@ html, body {
   }
   #main-wrap { margin-left: 0 !important; }
   #topbar { left: 0 !important; }
+}
+
+/* ── Sidebar collapse (desktop) ── */
+body.sidebar-collapsed #sidebar {
+  width: 0;
+  overflow: hidden;
+  border-right: none;
+}
+body.sidebar-collapsed #main-wrap {
+  margin-left: 0 !important;
+}
+body.sidebar-collapsed #topbar {
+  left: 0 !important;
+}
+#sidebar-collapse-btn {
+  position: fixed;
+  top: 50%;
+  left: var(--sidebar-w);
+  transform: translateY(-50%);
+  z-index: 60;
+  width: 20px;
+  height: 40px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 10px;
+  transition: left 0.2s ease, color 0.15s;
+}
+#sidebar-collapse-btn:hover { color: var(--accent); }
+body.sidebar-collapsed #sidebar-collapse-btn {
+  left: 0;
+}
+@media (max-width: 767px) {
+  #sidebar-collapse-btn { display: none; }
+}
+
+/* ── Generation banner (topbar sticky) ── */
+#gen-banner {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.25);
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+}
+#gen-banner:hover { background: rgba(74, 222, 128, 0.15); }
+#gen-banner.visible { display: flex; }
+#gen-banner.image-gen {
+  background: rgba(167, 139, 250, 0.08);
+  border-color: rgba(167, 139, 250, 0.25);
+  color: var(--accent-image);
+}
+#gen-banner.image-gen:hover { background: rgba(167, 139, 250, 0.15); }
+@keyframes banner-spin { to { transform: rotate(360deg); } }
+#gen-banner .banner-icon {
+  animation: banner-spin 1.5s linear infinite;
+  font-size: 14px;
 }
 
 /* Template tab */

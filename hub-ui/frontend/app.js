@@ -18,7 +18,12 @@ const state = {
   benchmark: null,
   logsPaused: false,
   logFilter: "all", // all | error | warn | comfy
+  logSearch: "",
+  llm: { model: "auto", messages: [], input: "" },
+  stt: { language: "cs", file: null, transcript: "", fileName: "" },
+  vid: { model: "sana-1600m", prompt: "", duration: 5, seed: 42 },
   historyIndex: -1, // výběr pro klávesnicovou navigaci v historii
+
   historyExpanded: null, // id řádku historie s rozbaleným audio náhledem
   settings: { notify: localStorage.getItem("comfyui-notify") === "1" },
   filters: { historyKind: "", templateKind: "",
@@ -43,6 +48,9 @@ const VIEW_TITLES = {
   generate: "Generovat",
   tts: "TTS Studio",
   image: "Image Studio",
+  video: "Video Studio",
+  llm: "LLM Chat",
+  stt: "STT Transkripce",
   templates: "Templates & Presets",
   history: "History",
   logs: "Live Logs",
@@ -144,6 +152,32 @@ function toast(msg, type = "ok") {
   el.textContent = msg;
   c.appendChild(el);
   setTimeout(() => el.remove(), 4000);
+}
+
+function confirmModal(message, danger = false) {
+  return new Promise(resolve => {
+    const modal = $("#modal-container");
+    modal.innerHTML = `
+      <div class="modal-overlay">
+        <div class="modal-card" style="max-width:420px">
+          <p class="text-on-surface mb-5 text-sm leading-relaxed">${escapeHtml(message)}</p>
+          <div class="flex gap-2 justify-end">
+            <button id="cm-cancel" class="btn btn-secondary btn-md">Zrušit</button>
+            <button id="cm-ok" class="btn ${danger ? "btn-danger" : "btn-primary"} btn-md">Potvrdit</button>
+          </div>
+        </div>
+      </div>`;
+    modal.classList.remove("hidden");
+    const close = (v) => { modal.classList.add("hidden"); modal.innerHTML = ""; resolve(v); };
+    $("#cm-ok").addEventListener("click", () => close(true));
+    $("#cm-cancel").addEventListener("click", () => close(false));
+    $(".modal-overlay", modal).addEventListener("click", e => { if (e.target === e.currentTarget) close(false); });
+  });
+}
+
+function isTyping() {
+  const tag = (document.activeElement?.tagName || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select";
 }
 
 async function api(path, opts = {}) {
@@ -255,8 +289,10 @@ function navigate(view) {
     b.classList.toggle("bg-surface-container", active);
     b.classList.toggle("text-on-surface", active);
     b.classList.toggle("text-on-surface-variant", !active);
+    b.classList.toggle("active-view", active);
   });
   render();
+  updateGenBanner();
 }
 
 function render() {
@@ -268,6 +304,9 @@ function render() {
     case "generate": renderGenerate(content); break;
     case "tts": renderTts(content); break;
     case "image": renderImage(content); break;
+    case "video": renderVideo(content); break;
+    case "llm": renderLlm(content); break;
+    case "stt": renderStt(content); break;
     case "templates": renderTemplates(content); break;
     case "history": renderHistory(content); break;
     case "logs": renderLogs(content); break;
@@ -433,7 +472,7 @@ async function renderStatus(el) {
     catch (e) { toast(`Free selhalo: ${e.message}`, "error"); }
   });
   $("#btn-unload").addEventListener("click", async () => {
-    if (!confirm("Opravdu restartovat ComfyUI? Generování se přeruší a modely se znovu načtou.")) return;
+    if (!await confirmModal("Opravdu restartovat ComfyUI? Generování se přeruší a modely se znovu načtou.", true)) return;
     try { await api("/api/unload", { method: "POST" }); toast("ComfyUI restartován"); refreshAll(); }
     catch (e) { toast(`Restart selhal: ${e.message}`, "error"); }
   });
@@ -521,9 +560,9 @@ async function toggleClusterMode() {
   const { body } = await api("/api/hub/cluster-mode");
   const cur = body.cluster_mode;
   if (cur === "auto") {
-    if (!confirm("Přepnout na MANUAL?\n\nAutomatizované generování (content-factory pipeline, proxy endpointy)\nBUDE BLOKOVÁNO — ruční ovládání v UI zůstává.")) return;
+    if (!await confirmModal("Přepnout na MANUAL?\n\nAutomatizované generování (content-factory pipeline, proxy endpointy) BUDE BLOKOVÁNO — ruční ovládání v UI zůstává.", true)) return;
   } else {
-    if (!confirm("Přepnout na AUTO?\n\nProxy bude automaticky startovat služby a posílat workload\nna stroje dle desired state — pipeline poběží bez člověka.")) return;
+    if (!await confirmModal("Přepnout na AUTO?\n\nProxy bude automaticky startovat služby a posílat workload na stroje dle desired state — pipeline poběží bez člověka.", false)) return;
   }
   try {
     await api("/api/hub/cluster-mode", { method: "PUT", body: JSON.stringify({ mode: cur === "auto" ? "manual" : "auto" }) });
@@ -708,7 +747,7 @@ async function refreshDashboardGrid() {
     const card = b.closest("[data-dash-machine-card]");
     const mid = card?.dataset.dashMachineCard;
     const enable = b.dataset.dashEnabled !== "1";
-    if (!enable && !confirm(`Stop služby ${sid} na ${mid}? Běžící generace se přeruší.`)) return;
+    if (!enable && !await confirmModal(`Stop služby ${sid} na ${mid}? Běžící generace se přeruší.`, true)) return;
     b.disabled = true;
     try {
       await api(`/api/hub/machines/${encodeURIComponent(mid)}/services/${encodeURIComponent(sid)}/${enable ? "start" : "stop"}`, { method: "POST" });
@@ -719,7 +758,7 @@ async function refreshDashboardGrid() {
   }));
   $$("[data-dash-unload]", grid).forEach(b => b.addEventListener("click", async () => {
     const mid = b.dataset.dashUnload;
-    if (!confirm(`Unload modelu na ${mid}?`)) return;
+    if (!await confirmModal(`Unload modelu na ${mid}?`, true)) return;
     b.disabled = true;
     try {
       await api(`/api/hub/machines/${encodeURIComponent(mid)}/unload`, { method: "POST" });
@@ -740,7 +779,7 @@ async function refreshDashboardGrid() {
   $$("[data-dash-mode]", grid).forEach(b => b.addEventListener("click", async () => {
     const mid = b.dataset.dashMode;
     const mode = b.dataset.dashModeTarget;
-    if (!confirm(`Přepnout ${mid} na režim '${mode}'?\n\nBěžící služby ostatních režimů se zastaví\na služby režimu '${mode}' se nastartují (modely se natahují — trvá to).`)) return;
+    if (!await confirmModal(`Přepnout ${mid} na režim '${mode}'?\n\nBěžící služby ostatních režimů se zastaví a služby režimu '${mode}' se nastartují (modely se natahují — trvá to).`, true)) return;
     b.disabled = true;
     b.textContent = `${mode}…`;
     try {
@@ -779,7 +818,7 @@ async function refreshDashboardGrid() {
 function bindDashboardActions(el) {
   $("#dash-cluster-mode")?.addEventListener("click", toggleClusterMode);
   $("#btn-dash-free-all")?.addEventListener("click", async () => {
-    if (!confirm("Free VRAM na VŠECH strojích? Běžící modely se uvolní.")) return;
+    if (!await confirmModal("Free VRAM na VŠECH strojích? Běžící modely se uvolní.", true)) return;
     const btn = $("#btn-dash-free-all");
     btn.disabled = true;
     try {
@@ -943,7 +982,7 @@ function renderClusterManage() {
   $$("[data-cluster-remove]", el).forEach(b =>
     b.addEventListener("click", async () => {
       const id = b.dataset.clusterRemove;
-      if (!confirm(`Odebrat stroj ${id}? Assignmenty se upraví (fallback povýší).`)) return;
+      if (!await confirmModal(`Odebrat stroj ${id}? Assignmenty se upraví (fallback povýší).`, true)) return;
       b.disabled = true;
       try {
         await api(`/api/hub/machines/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -1111,7 +1150,11 @@ function renderGenerate(el) {
     renderRecommendInto();
   });
   if (isTtsModel) {
-    $("#tts-text").addEventListener("input", e => { state.tts.text = e.target.value; });
+    $("#tts-text").addEventListener("input", e => {
+      state.tts.text = e.target.value;
+      const counter = $("#tts-char-counter");
+      if (counter) counter.textContent = ttsCharCounterText(e.target.value);
+    });
     bindTtsParams(() => renderGenerate(el));
     bindTtsPresetChips(el);
   } else {
@@ -1187,6 +1230,16 @@ function bindTtsPresetChips(rootEl) {
   });
 }
 
+function ttsCharCounterText(text) {
+  const len = (text || "").length;
+  const words = (text || "").trim().split(/\s+/).filter(Boolean).length;
+  const readSec = Math.max(0, Math.round(words / 3));
+  const min = Math.floor(readSec / 60);
+  const sec = readSec % 60;
+  const readStr = min > 0 ? `~${min}m ${sec}s` : `~${sec}s`;
+  return len === 0 ? "0 znaků" : `📝 ${len} znaků · ${words} slov · odhad délky audia: ${readStr}`;
+}
+
 function ttsParamsHtml() {
   const s = state.tts;
   const isMossV15 = s.model === "moss-tts-v1.5";
@@ -1207,7 +1260,8 @@ function ttsParamsHtml() {
   const formatOptions = RESPONSE_FORMATS.map(f => `<option value="${f}" ${f === s.response_format ? "selected" : ""}>${f || "default (wav)"}</option>`).join("");
   return `
     ${vramWarning(s.model)}
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+    <div id="tts-char-counter" class="text-[10px] text-text-muted mt-2 font-label-mono">${ttsCharCounterText(s.text)}</div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
       <div><label class="text-[10px] text-text-muted">Jazyk</label><select id="tts-language" class="control control-block field">${langOptions}</select></div>
       <div><label class="text-[10px] text-text-muted">Seed</label><div class="flex gap-1"><input id="tts-seed" type="number" value="${s.seed}" class="control control-block field flex-1" ${s.seedRandom ? "disabled" : ""}><button id="tts-seed-rnd" class="btn btn-secondary btn-sm ${s.seedRandom ? "btn-on" : ""}" title="Náhodný seed při každé generaci">🎲</button></div></div>
       ${isMossV15 || isQwen3 ? `<div><label class="text-[10px] text-text-muted">Voice</label><div class="flex gap-1"><select id="tts-voice" class="control control-block field flex-1" ${s.refAudio ? "disabled" : ""}>${isQwen3 ? qwenVoiceOptions : `<option value="">— žádný —</option>${voiceOptions}`}</select>${isMossV15 ? `<button id="btn-play-voice" class="btn btn-secondary btn-sm" title="Přehrát náhled">▶</button>` : ""}</div></div>` : ""}
@@ -1364,21 +1418,40 @@ function renderTts(el) {
       <div class="space-y-4">
         ${card("Voice Designer", `
           <div class="space-y-2">
-            <textarea id="vd-instruction" rows="2" class="control control-block control-area field">${escapeHtml(state.voiceDesign.instruction)}</textarea>
-            <textarea id="vd-reference" rows="2" class="control control-block control-area field">${escapeHtml(state.voiceDesign.reference_text)}</textarea>
-            <div class="grid grid-cols-2 gap-2">
-              <select id="vd-language" class="control control-block field">${(state.tts.model === "qwen3-tts-1.7b-customvoice" ? QWEN3_LANGUAGES : LANGUAGES).map(l => `<option value="${l}">${l}</option>`).join("")}</select>
-              <input id="vd-seed" type="number" value="${state.voiceDesign.seed}" class="control control-block field">
+            <div>
+              <label class="text-[10px] text-text-muted">Instrukce hlasu (styl, vlastnosti)</label>
+              <textarea id="vd-instruction" rows="2" class="control control-block control-area field mt-0.5" placeholder="Klidný mužský hlas, formální styl...">${escapeHtml(state.voiceDesign.instruction)}</textarea>
             </div>
-            <input id="vd-voice-id" type="text" value="${escapeAttribute(state.voiceDesign.voice_id)}" class="control control-block field" placeholder="voice id (auto)">
-            <button id="btn-design-voice" class="btn btn-primary btn-md btn-block">Vytvořit voice preset</button>
+            <div>
+              <label class="text-[10px] text-text-muted">Referenční text (obsah k syntéze jako vzor)</label>
+              <textarea id="vd-reference" rows="2" class="control control-block control-area field mt-0.5" placeholder="Ukázková věta pro syntézu hlasu...">${escapeHtml(state.voiceDesign.reference_text)}</textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-[10px] text-text-muted">Jazyk</label>
+                <select id="vd-language" class="control control-block field mt-0.5">${(state.tts.model === "qwen3-tts-1.7b-customvoice" ? QWEN3_LANGUAGES : LANGUAGES).map(l => `<option value="${l}">${l}</option>`).join("")}</select>
+              </div>
+              <div>
+                <label class="text-[10px] text-text-muted">Seed</label>
+                <input id="vd-seed" type="number" value="${state.voiceDesign.seed}" class="control control-block field mt-0.5">
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] text-text-muted">Voice ID (volitelné)</label>
+              <input id="vd-voice-id" type="text" value="${escapeAttribute(state.voiceDesign.voice_id)}" class="control control-block field mt-0.5" placeholder="voice id (auto)">
+            </div>
+            <button id="btn-design-voice" class="btn btn-primary btn-md btn-block mt-2">Vytvořit voice preset</button>
           </div>`)}
         ${state.generating && state.generating.kind === "tts" ? renderProgress() : renderTtsResult()}
       </div>
     </div>`;
 
   $("#tts-model").addEventListener("change", e => { state.tts.model = e.target.value; render(); });
-  $("#tts-text").addEventListener("input", e => { state.tts.text = e.target.value; });
+  $("#tts-text").addEventListener("input", e => {
+    state.tts.text = e.target.value;
+    const counter = $("#tts-char-counter");
+    if (counter) counter.textContent = ttsCharCounterText(e.target.value);
+  });
   bindTtsParams();
   $("#btn-generate-tts").addEventListener("click", generateTts);
   $("#btn-cancel-gen")?.addEventListener("click", cancelGeneration);
@@ -2204,7 +2277,7 @@ function bindTemplateGrid() {
 
 async function deleteTemplate(id) {
   const t = state.templates.find(x => x.id === id);
-  if (!t || !confirm(`Smazat preset „${t.name}“?`)) return;
+  if (!t || !await confirmModal(`Smazat preset „${t.name}“?`, true)) return;
   try {
     await api(`/api/templates/${id}`, { method: "DELETE" });
     toast("Preset smazán");
@@ -2433,7 +2506,7 @@ function renderHistoryResults() {
 }
 
 async function deleteHistory(id) {
-  if (!confirm(`Smazat záznam #${id}?`)) return;
+  if (!await confirmModal(`Smazat záznam #${id}?`, true)) return;
   try {
     await api(`/api/history/${id}`, { method: "DELETE" });
     toast(`Záznam #${id} smazán`);
@@ -2466,17 +2539,46 @@ function openZoomUrl(url, title) {
   if (overlay) overlay.addEventListener("click", e => { if (e.target === overlay) { modal.classList.add("hidden"); modal.innerHTML = ""; } });
 }
 
+function miniDonut(pct, color) {
+  const r = 18, circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+  return `<svg width="48" height="48" viewBox="0 0 48 48" style="flex-shrink:0">
+    <circle cx="24" cy="24" r="${r}" fill="none" stroke="var(--border)" stroke-width="4"/>
+    <circle cx="24" cy="24" r="${r}" fill="none" stroke="${color}" stroke-width="4"
+      stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
+      transform="rotate(-90 24 24)"/>
+    <text x="24" y="28" text-anchor="middle" font-size="10" fill="currentColor" font-weight="700">${pct}%</text>
+  </svg>`;
+}
+
 function renderStats() {
   const st = state.stats;
   if (!st) return "<p class='text-text-muted text-xs'>Žádná data</p>";
+  const tts = st.by_kind?.tts || 0;
+  const img = st.by_kind?.image || 0;
+  const total = tts + img || 1;
+  const ttsPct = Math.round((tts / total) * 100);
+  const imgPct = 100 - ttsPct;
   return `
-    <div class="space-y-2 text-xs">
-      <div class="flex justify-between"><span class="text-text-muted">Celkem</span><span class="font-bold text-on-surface">${st.total}</span></div>
-      <div class="flex justify-between"><span class="text-text-muted">Úspěšných</span><span class="font-bold text-primary">${st.ok}</span></div>
-      <div class="flex justify-between"><span class="text-text-muted">Chyb</span><span class="font-bold text-red-400">${st.errors}</span></div>
-      <div class="flex justify-between"><span class="text-text-muted">Úspěšnost</span><span class="font-bold text-on-surface">${st.success_rate}%</span></div>
-      <div class="flex justify-between"><span class="text-text-muted">Průměrný čas</span><span class="font-bold text-on-surface">${fmtDuration(st.avg_duration_ms)}</span></div>
-      <div class="flex justify-between"><span class="text-text-muted">TTS / Image</span><span class="font-bold text-on-surface">${st.by_kind.tts || 0} / ${st.by_kind.image || 0}</span></div>
+    <div class="flex items-center gap-4 mb-3">
+      ${miniDonut(st.success_rate || 0, "var(--accent)")}
+      <div class="space-y-1 text-xs flex-1">
+        <div class="flex justify-between"><span class="text-text-muted">Celkem</span><span class="font-bold text-on-surface">${st.total}</span></div>
+        <div class="flex justify-between"><span class="text-text-muted">Úspěšných</span><span class="font-bold text-primary">${st.ok}</span></div>
+        <div class="flex justify-between"><span class="text-text-muted">Chyb</span><span class="font-bold text-red-400">${st.errors}</span></div>
+        <div class="flex justify-between"><span class="text-text-muted">Průměrný čas</span><span class="font-bold text-on-surface">${fmtDuration(st.avg_duration_ms)}</span></div>
+      </div>
+    </div>
+    <div class="text-[10px] text-text-muted mb-1 flex justify-between">
+      <span>TTS vs Image poměr</span>
+      <span>${tts} / ${img}</span>
+    </div>
+    <div class="w-full h-2 rounded-full overflow-hidden flex bg-surface-dim border border-border/50">
+      <div class="h-full bg-primary transition-all" style="width:${ttsPct}%" title="TTS: ${tts}"></div>
+      <div class="h-full transition-all" style="width:${imgPct}%;background:var(--accent-image)" title="Image: ${img}"></div>
+    </div>
+    <div class="flex justify-between text-[9px] text-text-muted mt-1">
+      <span>🎙 TTS (${ttsPct}%)</span><span>🖼 Image (${imgPct}%)</span>
     </div>`;
 }
 
@@ -2610,10 +2712,15 @@ function renderMossProgressBar() {
 
 function filteredLogs() {
   const f = state.logFilter || "all";
-  if (f === "error") return state.logs.filter(l => /error|exception|traceback|failed/i.test(l));
-  if (f === "warn") return state.logs.filter(l => /warn/i.test(l));
-  if (f === "comfy") return state.logs.filter(l => l.includes("[ComfyUI]"));
-  return state.logs;
+  let list = state.logs;
+  if (f === "error") list = list.filter(l => /error|exception|traceback|failed/i.test(l));
+  else if (f === "warn") list = list.filter(l => /warn/i.test(l));
+  else if (f === "comfy") list = list.filter(l => l.includes("[ComfyUI]"));
+  if (state.logSearch) {
+    const q = state.logSearch.toLowerCase();
+    list = list.filter(l => l.toLowerCase().includes(q));
+  }
+  return list;
 }
 
 function downloadLogs() {
@@ -2645,10 +2752,11 @@ function renderLogs(el) {
         <div class="flex items-center gap-2 flex-wrap">
           <h3 class="font-bold text-on-surface">Live Logs</h3>
           ${statusChip}
-          <span class="text-[10px] text-text-muted font-label-mono">${state.logs.length} řádků${state.logFilter !== "all" ? ` · ${lines.length} ve filtru` : ""} · ${source}</span>
+          <span class="text-[10px] text-text-muted font-label-mono">${state.logs.length} řádků${state.logFilter !== "all" || state.logSearch ? ` · ${lines.length} ve filtru` : ""} · ${source}</span>
         </div>
         <div class="flex items-center gap-1.5 flex-wrap">
           ${filterChips}
+          <input id="logs-search" type="text" placeholder="Hledat v logách…" value="${escapeAttribute(state.logSearch || "")}" class="control field text-xs" style="width:140px">
           <button id="logs-pause" class="btn btn-secondary btn-sm" title="Pozastavit/spustit obnovování">${state.logsPaused ? "▶ Spustit" : "⏸ Pauza"}</button>
           <button id="logs-bottom" class="btn btn-secondary btn-sm" title="Skok na konec">⬇</button>
           <button id="logs-download" class="btn btn-secondary btn-sm" title="Stáhnout logy jako txt">⇩ .txt</button>
@@ -2666,6 +2774,13 @@ function renderLogs(el) {
     state.logFilter = b.dataset.logFilter;
     renderLogs(el);
   }));
+  $("#logs-search")?.addEventListener("input", e => {
+    state.logSearch = e.target.value;
+    const p = $("#logs-panel");
+    if (!p) return;
+    const filtered = filteredLogs();
+    p.innerHTML = filtered.map(renderLogLine).join("") || "<div class='text-text-muted p-2'>Žádné logy odpovídající hledání</div>";
+  });
   $("#logs-pause").addEventListener("click", () => {
     state.logsPaused = !state.logsPaused;
     renderLogs(el);
@@ -2729,7 +2844,7 @@ function renderSettings(el) {
     catch (e) { toast(`Free selhalo: ${e.message}`, "error"); }
   });
   $("#set-unload").addEventListener("click", async () => {
-    if (!confirm("Opravdu restartovat ComfyUI?")) return;
+    if (!await confirmModal("Opravdu restartovat ComfyUI?", true)) return;
     try { await api("/api/unload", { method: "POST" }); toast("ComfyUI restartován"); }
     catch (e) { toast(`Restart selhal: ${e.message}`, "error"); }
   });
@@ -2886,17 +3001,93 @@ function renderQueuePanel() {
     <div class="text-[9px] text-text-muted mt-2">Aktualizováno: ${q.lastUpdate ? new Date(q.lastUpdate).toLocaleTimeString("cs-CZ") : "—"}</div>`;
 }
 
+// ── Generation Banner (topbar sticky) ────────────────────
+
+let _genBannerTimer = null;
+
+function updateGenBanner() {
+  const banner = $("#gen-banner");
+  if (!banner) return;
+  const g = state.generating;
+  if (!g) {
+    banner.classList.remove("visible", "image-gen");
+    if (_genBannerTimer) { clearInterval(_genBannerTimer); _genBannerTimer = null; }
+    return;
+  }
+  const isImage = g.kind === "image";
+  banner.classList.add("visible");
+  banner.classList.toggle("image-gen", isImage);
+  const modelName = state.models.find(m => m.id === g.model)?.name || g.model || "generuji";
+  const textEl = $("#gen-banner-text");
+  if (textEl) textEl.textContent = modelName.slice(0, 18);
+  if (!_genBannerTimer && g.startMs) {
+    _genBannerTimer = setInterval(() => {
+      if (!state.generating) { clearInterval(_genBannerTimer); _genBannerTimer = null; return; }
+      const timeEl = $("#gen-banner-time");
+      if (timeEl && state.generating.startMs) {
+        timeEl.textContent = `· ${((performance.now() - state.generating.startMs) / 1000).toFixed(0)}s`;
+      }
+    }, 1000);
+  }
+}
+
+// ── Keyboard Shortcuts Modal ──────────────────────────────
+
+function openShortcutsModal() {
+  const modal = $("#modal-container");
+  modal.innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal-card" style="max-width:480px">
+        <h3 class="font-bold text-on-surface mb-4 flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary">keyboard</span>
+          Klávesové zkratky
+        </h3>
+        <div class="space-y-4 text-xs">
+          <div>
+            <div class="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">Globální</div>
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center"><span class="text-on-surface">Zavřít modal / dialog</span><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">Esc</kbd></div>
+              <div class="flex justify-between items-center"><span class="text-on-surface">Tato nápověda</span><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">?</kbd></div>
+            </div>
+          </div>
+          <div>
+            <div class="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">History view</div>
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center"><span class="text-on-surface">Pohyb v seznamu</span><div class="flex gap-1"><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">↑↓</kbd><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">j/k</kbd></div></div>
+              <div class="flex justify-between items-center"><span class="text-on-surface">Otevřít detail</span><div class="flex gap-1"><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">Enter</kbd><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">o</kbd></div></div>
+              <div class="flex justify-between items-center"><span class="text-on-surface">Znovu spustit generaci</span><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">r</kbd></div>
+              <div class="flex justify-between items-center"><span class="text-on-surface">Zoom obrázku</span><div class="flex gap-1"><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">i</kbd><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">p</kbd></div></div>
+              <div class="flex justify-between items-center"><span class="text-on-surface">Smazat záznam</span><div class="flex gap-1"><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">Del</kbd><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">x</kbd></div></div>
+              <div class="flex justify-between items-center"><span class="text-on-surface">První / poslední záznam</span><div class="flex gap-1"><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">Home</kbd><kbd class="px-2 py-0.5 bg-surface-container border border-border rounded font-label-mono text-[10px]">End</kbd></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-5 flex justify-end">
+          <button id="sc-close" class="btn btn-secondary btn-md">Zavřít</button>
+        </div>
+      </div>
+    </div>`;
+  modal.classList.remove("hidden");
+  $("#sc-close").addEventListener("click", () => { modal.classList.add("hidden"); modal.innerHTML = ""; });
+  $(".modal-overlay", modal).addEventListener("click", e => { if (e.target === e.currentTarget) { modal.classList.add("hidden"); modal.innerHTML = ""; } });
+}
+
 // ── Theme ────────────────────────────────────────────────
 
 function initTheme() {
   const saved = localStorage.getItem("comfyui-theme") || "dark";
   document.documentElement.dataset.theme = saved;
+  const icon = $("#theme-icon");
+  if (icon) icon.textContent = saved === "dark" ? "dark_mode" : "light_mode";
 }
 
 function toggleTheme() {
   const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
   localStorage.setItem("comfyui-theme", next);
+  const icon = $("#theme-icon");
+  if (icon) icon.textContent = next === "dark" ? "dark_mode" : "light_mode";
+  toast(next === "dark" ? "Tmavé téma" : "Světlé téma");
 }
 
 // ── Navigation wiring ────────────────────────────────────
@@ -2920,6 +3111,29 @@ function initNavigation() {
     $("#sidebar-backdrop").classList.toggle("hidden");
   });
   $("#sidebar-backdrop").addEventListener("click", closeSidebar);
+
+  // Sidebar collapse (desktop)
+  const collapseBtn = $("#sidebar-collapse-btn");
+  if (collapseBtn) {
+    const collapsed = localStorage.getItem("sidebar-collapsed") === "1";
+    if (collapsed) document.body.classList.add("sidebar-collapsed");
+    collapseBtn.textContent = collapsed ? "›" : "‹";
+    collapseBtn.addEventListener("click", () => {
+      const isCollapsed = document.body.classList.toggle("sidebar-collapsed");
+      collapseBtn.textContent = isCollapsed ? "›" : "‹";
+      localStorage.setItem("sidebar-collapsed", isCollapsed ? "1" : "0");
+    });
+  }
+
+  // Help button → shortcuts modal
+  $("#help-btn")?.addEventListener("click", openShortcutsModal);
+
+  // Gen banner → navigate to active studio
+  $("#gen-banner")?.addEventListener("click", () => {
+    const g = state.generating;
+    if (g) navigate(g.kind === "image" ? "image" : "tts");
+  });
+
   let globalSearchTimer = null;
   $("#global-search").addEventListener("input", e => {
     const q = e.target.value;
@@ -2967,10 +3181,14 @@ function initKeyboardShortcuts() {
       return;
     }
 
+    if (e.key === "?" && !isTyping() && !modalOpen) {
+      openShortcutsModal();
+      return;
+    }
+
     // Klávesnicová navigace v historii
     if (state.view !== "history" || modalOpen) return;
-    const tag = (e.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    if (isTyping()) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const n = state.history.length;
     if (!n) return;
@@ -3100,7 +3318,13 @@ async function fetchWebUIRegistry() {
 async function buildWebUINav() {
   const registry = await fetchWebUIRegistry();
   const nav = document.getElementById('webui-nav');
+  const section = document.getElementById('webui-nav-section');
   if (!nav) return;
+
+  if (section) {
+    const runningCount = registry.filter(w => w.running).length;
+    section.classList.toggle('hidden', runningCount === 0);
+  }
 
   // Vyčisti existující
   nav.innerHTML = '';
@@ -3110,15 +3334,14 @@ async function buildWebUINav() {
     link.href = w.url;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
-    link.className = 'webui-link block px-3 py-2 rounded-md hover:bg-bg-tertiary transition-colors';
+    link.className = 'nav-item flex items-center gap-3 px-4 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors text-sm font-medium';
     link.innerHTML = `
-      <div class="flex items-center gap-2">
-        <span class="text-lg">${w.icon}</span>
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium truncate">${w.label}</div>
-          <div class="text-xs text-text-muted truncate">@ ${w.machine}</div>
-        </div>
+      <span class="text-[18px] flex-shrink-0">${w.icon || '🔗'}</span>
+      <div class="flex-1 min-w-0">
+        <div class="truncate text-sm font-medium">${escapeHtml(w.label || w.ui_type || 'WebUI')}</div>
+        <div class="text-[10px] text-text-muted truncate">@ ${escapeHtml(w.machine || '')}</div>
       </div>
+      <span class="material-symbols-outlined text-[14px] text-text-muted">open_in_new</span>
     `;
     link.title = `${w.label} (${w.ui_type}) — ${w.url}`;
     nav.appendChild(link);
@@ -3133,3 +3356,277 @@ async function buildWebUINav() {
 // Auto-refresh každých 30s
 setInterval(buildWebUINav, 30000);
 buildWebUINav();  // initial load
+
+
+// ═══════════════════════════════════════════════════════════════════
+// NEW STUDIO VIEWS: LLM Chat, STT, Video
+// ═══════════════════════════════════════════════════════════════════
+
+// ── LLM Chat view ───────────────────────────────────────────────
+function renderLlm(el) {
+  const s = state.llm || { model: "auto", messages: [], input: "" };
+  state.llm = s;
+  const msgs = s.messages || [];
+  const llmModels = state.models.filter(m => m.kind === "llm");
+  const modelOptions = ["auto"].concat(llmModels.map(m => m.id))
+    .map(id => `<option value="${escapeAttribute(id)}" ${id === (s.model || "auto") ? "selected" : ""}>${escapeHtml(id)}</option>`).join("");
+
+  el.innerHTML = `
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4" style="height:calc(100vh - 160px)">
+      <div class="lg:col-span-3 flex flex-col gap-3 min-h-0">
+        <div class="card flex-1 flex flex-col min-h-0">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary">smart_toy</span>
+              <h3 class="font-bold text-on-surface">LLM Chat</h3>
+            </div>
+            <select id="llm-model" class="control field text-xs" style="width:160px">${modelOptions}</select>
+          </div>
+          <div id="llm-messages" class="flex-1 overflow-y-auto space-y-3 mb-3 log-panel p-3" style="min-height:0">
+            ${msgs.length === 0
+              ? `<div class="text-text-muted text-xs p-4 text-center">Žádné zprávy. Napiš dotaz níže nebo stiskni Enter.</div>`
+              : msgs.map(m => `
+                <div class="${m.role === "user" ? "text-right" : "text-left"}">
+                  <div class="inline-block px-3.5 py-2.5 rounded-lg text-xs max-w-[85%] text-left whitespace-pre-wrap leading-relaxed ${
+                    m.role === "user" ? "bg-primary/20 text-on-surface border border-primary/30" : "bg-surface-container text-on-surface border border-border"
+                  }">${escapeHtml(m.content)}</div>
+                  <div class="text-[9px] text-text-muted mt-0.5 px-1">${m.role === "user" ? "Ty" : "Asistent"}</div>
+                </div>`).join("")}
+          </div>
+          <div class="flex gap-2">
+            <textarea id="llm-input" rows="2" class="control control-block control-area field flex-1" placeholder="Napiš dotaz... (Enter odeslat, Shift+Enter nový řádek)">${escapeHtml(s.input || "")}</textarea>
+            <button id="btn-llm-send" class="btn btn-primary btn-md self-end px-5">Odeslat</button>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-3">
+        ${card("Nastavení a info", `
+          <p class="text-xs text-text-muted mb-3">Model <strong>auto</strong> nechá proxy vybrat dostupný LLM dle clusterového desired stavu.</p>
+          <button id="btn-llm-clear" class="btn btn-secondary btn-sm btn-block">Vymazat konverzaci</button>
+          <p class="text-[10px] text-text-muted mt-3 font-label-mono">Proxy: /api/proxy/llm/chat</p>
+        `)}
+      </div>
+    </div>`;
+
+  const msgsEl = $("#llm-messages");
+  if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+  $("#llm-model")?.addEventListener("change", e => { state.llm.model = e.target.value; });
+  $("#llm-input")?.addEventListener("input", e => { state.llm.input = e.target.value; });
+  $("#llm-input")?.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendLlmMessage(); }
+  });
+  $("#btn-llm-send")?.addEventListener("click", sendLlmMessage);
+  $("#btn-llm-clear")?.addEventListener("click", () => { state.llm.messages = []; render(); });
+}
+
+async function sendLlmMessage() {
+  if (!state.llm) state.llm = { model: "auto", messages: [], input: "" };
+  const text = (state.llm.input || "").trim();
+  if (!text) return;
+  state.llm.messages.push({ role: "user", content: text });
+  state.llm.input = "";
+  render();
+  const btn = $("#btn-llm-send");
+  if (btn) { btn.disabled = true; btn.textContent = "…"; }
+  try {
+    const result = await llmChat(text, state.llm.model || "auto");
+    const reply = result.choices?.[0]?.message?.content || result.response || result.text || JSON.stringify(result).slice(0, 500);
+    state.llm.messages.push({ role: "assistant", content: reply });
+  } catch (e) {
+    state.llm.messages.push({ role: "assistant", content: `[Chyba: ${e.message}]` });
+    toast(`LLM chyba: ${e.message}`, "error");
+  } finally {
+    render();
+  }
+}
+
+// ── STT Transcribe view ──────────────────────────────────────────
+function renderStt(el) {
+  const s = state.stt || { language: "cs", file: null, transcript: "", fileName: "" };
+  state.stt = s;
+  const langOptions = ["auto"].concat(LANGUAGES)
+    .map(l => `<option value="${l}" ${l === (s.language || "cs") ? "selected" : ""}>${l}</option>`).join("");
+  const hasTranscript = !!(s.transcript);
+
+  el.innerHTML = `
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-2 space-y-4">
+        <div class="card">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="material-symbols-outlined text-primary">mic</span>
+            <h3 class="font-bold text-on-surface">STT Transkripce</h3>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <label class="text-[10px] text-text-muted">Audio soubor (MP3, WAV, FLAC, M4A, OGG)</label>
+              <div class="flex gap-2 mt-1 items-center flex-wrap">
+                <input id="stt-file-input" type="file" accept="audio/*" class="hidden">
+                <button id="btn-stt-file" class="btn btn-secondary btn-md">
+                  <span class="material-symbols-outlined text-[16px]" style="margin-right:4px">upload_file</span>Nahrát audio
+                </button>
+                <span id="stt-file-name" class="text-xs text-text-muted font-label-mono">${escapeHtml(s.fileName || (s.file ? s.file.name : "Žádný soubor nevybrán"))}</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="text-[10px] text-text-muted">Jazyk</label>
+                <select id="stt-language" class="control control-block field">${langOptions}</select>
+              </div>
+              <div class="flex items-end">
+                <button id="btn-stt-run" class="btn btn-primary btn-md btn-block">Transkribovat</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-on-surface">Výsledek</h3>
+            <div class="flex gap-2">
+              ${hasTranscript ? `
+                <button id="btn-stt-copy" class="btn btn-secondary btn-sm">Kopírovat</button>
+                <button id="btn-stt-to-tts" class="btn btn-primary btn-sm">Použít v TTS →</button>
+              ` : ""}
+            </div>
+          </div>
+          <div id="stt-result" class="text-sm">
+            ${hasTranscript
+              ? `<div class="whitespace-pre-wrap text-on-surface leading-relaxed p-3 bg-surface-container rounded-lg border border-border">${escapeHtml(s.transcript)}</div>`
+              : `<p class="text-text-muted text-xs">Výsledek transkripce se zobrazí zde.</p>`}
+          </div>
+        </div>
+      </div>
+      <div class="space-y-4">
+        ${card("Info", `
+          <p class="text-xs text-text-muted mb-2">Nahraj audio soubor z disku a spusť transkripci.</p>
+          <p class="text-xs text-text-muted mb-2">Tlačítko <strong>Použít v TTS →</strong> přenese rozpoznaný text přímo do TTS Studia pro syntézu.</p>
+          <p class="text-[10px] text-text-muted font-label-mono">Endpoint: /api/proxy/stt/transcribe</p>
+        `)}
+      </div>
+    </div>`;
+
+  $("#btn-stt-file")?.addEventListener("click", () => $("#stt-file-input")?.click());
+  $("#stt-file-input")?.addEventListener("change", e => {
+    const f = e.target.files?.[0];
+    if (f) {
+      state.stt.file = f;
+      state.stt.fileName = f.name;
+      const fn = $("#stt-file-name");
+      if (fn) fn.textContent = f.name;
+    }
+  });
+  $("#stt-language")?.addEventListener("change", e => { state.stt.language = e.target.value; });
+  $("#btn-stt-run")?.addEventListener("click", runStt);
+  $("#btn-stt-copy")?.addEventListener("click", () => {
+    navigator.clipboard?.writeText(state.stt.transcript || "");
+    toast("Transkript zkopírován");
+  });
+  $("#btn-stt-to-tts")?.addEventListener("click", () => {
+    state.tts.text = state.stt.transcript || "";
+    navigate("tts");
+    toast("Transkript přenesen do TTS");
+  });
+}
+
+async function runStt() {
+  if (!state.stt?.file) { toast("Nahraj audio soubor", "error"); return; }
+  const btn = $("#btn-stt-run");
+  if (btn) { btn.disabled = true; btn.textContent = "Transkribuji..."; }
+  const resultEl = $("#stt-result");
+  if (resultEl) resultEl.innerHTML = `<div class="text-text-muted text-xs p-2">Transkribuji, čekej prosím...</div>`;
+  try {
+    const result = await sttTranscribe(state.stt.file, state.stt.language || "auto");
+    const text = result.text || result.transcript || JSON.stringify(result);
+    state.stt.transcript = text;
+    render();
+    toast("Transkripce dokončena");
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = `<p class="text-red-400 text-xs">${escapeHtml(e.message)}</p>`;
+    toast(`STT chyba: ${e.message}`, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Transkribovat"; }
+  }
+}
+
+// ── Video Studio view ────────────────────────────────────────────
+function renderVideo(el) {
+  const s = state.vid || { model: "sana-1600m", prompt: "", duration: 5, seed: 42 };
+  state.vid = s;
+  const videoModels = state.models.filter(m => m.kind === "video");
+  const defaultModel = videoModels[0]?.id || "sana-1600m";
+  const modelOptions = (videoModels.length
+    ? videoModels
+    : [{ id: "sana-1600m", name: "Sana 1600M (default)" }]
+  ).map(m => `<option value="${escapeAttribute(m.id)}" ${(s.model || defaultModel) === m.id ? "selected" : ""}>${escapeHtml(m.name || m.id)}</option>`).join("");
+
+  el.innerHTML = `
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 acc-image">
+      <div class="lg:col-span-2 space-y-4">
+        <div class="card">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="material-symbols-outlined text-purple-400">movie</span>
+            <h3 class="font-bold text-on-surface">Video Studio</h3>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-[180px_1fr_auto] gap-3 items-start">
+            <select id="vid-model" class="control control-block field">${modelOptions}</select>
+            <textarea id="vid-prompt" rows="4" class="control control-block control-area field" placeholder="Popiš video scénu podrobně...">${escapeHtml(s.prompt || "")}</textarea>
+            <button id="btn-generate-vid" class="btn btn-primary-image btn-lg">Generovat</button>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+            <div><label class="text-[10px] text-text-muted">Délka (sekundy)</label>
+              <input id="vid-duration" type="number" min="1" max="30" value="${s.duration || 5}" class="control control-block field">
+            </div>
+            <div><label class="text-[10px] text-text-muted">Seed</label>
+              <div class="flex gap-1">
+                <input id="vid-seed" type="number" value="${s.seed || 42}" class="control control-block field flex-1">
+                <button id="vid-seed-rnd" class="btn btn-secondary btn-sm" title="Náhodný seed">🎲</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-4">
+        <div id="vid-result-panel">
+          ${card("Výsledek", "<p class='text-text-muted text-xs'>Žádný výstup zatím. Zadej prompt a klikni Generovat.</p>")}
+        </div>
+      </div>
+    </div>`;
+
+  $("#vid-model")?.addEventListener("change", e => { state.vid.model = e.target.value; });
+  $("#vid-prompt")?.addEventListener("input", e => { state.vid.prompt = e.target.value; });
+  $("#vid-duration")?.addEventListener("input", e => { state.vid.duration = parseInt(e.target.value) || 5; });
+  $("#vid-seed")?.addEventListener("input", e => { state.vid.seed = parseInt(e.target.value) || 42; });
+  $("#vid-seed-rnd")?.addEventListener("click", () => {
+    state.vid.seed = randomSeed();
+    const vi = $("#vid-seed");
+    if (vi) vi.value = state.vid.seed;
+  });
+  $("#btn-generate-vid")?.addEventListener("click", generateVideoClip);
+}
+
+async function generateVideoClip() {
+  const s = state.vid;
+  if (!s.prompt?.trim()) { toast("Zadej prompt pro video", "error"); return; }
+  const btn = $("#btn-generate-vid");
+  if (btn) { btn.disabled = true; btn.textContent = "Generuji..."; }
+  const panel = $("#vid-result-panel");
+  if (panel) panel.innerHTML = card("Výsledek", `<div class="text-text-muted text-xs">Generuji video (může trvat několik minut)...</div>`);
+  const t0 = performance.now();
+  try {
+    const blob = await videoGenerate(s.prompt, s.model || "sana-1600m", s.duration || 5);
+    const url = URL.createObjectURL(blob);
+    const dur = fmtDuration(performance.now() - t0);
+    if (panel) panel.innerHTML = card("Výsledek", `
+      <video controls src="${url}" class="w-full rounded-lg border border-border" style="max-height:360px"></video>
+      <div class="flex gap-2 mt-3 items-center">
+        <a href="${url}" download="video-${Date.now()}.mp4" class="btn btn-secondary btn-sm">⬇ Stáhnout .mp4</a>
+        <span class="text-xs text-text-muted">${dur}</span>
+      </div>`);
+    toast("Video vygenerováno");
+    notifyDone("Video hotové", s.model);
+  } catch (e) {
+    if (panel) panel.innerHTML = card("Výsledek", `<p class="text-red-400 text-xs">${escapeHtml(e.message)}</p>`);
+    toast(`Video selhalo: ${e.message}`, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Generovat"; }
+  }
+}
+
