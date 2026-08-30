@@ -3,6 +3,9 @@
 # Toggles řídí jestli routing pro daný kind smí auto-startovat služby
 # v AUTO režimu. MANUAL režim toggle ignoreuje (fail loud 503).
 #
+# `auto` je zvláštní toggle: True = orchestrator aktivní (fronta + idle-uvolnění
+# VRAM po delší nečinnosti), False = MANUAL (uživatel řídí ručně, idle-unload OFF).
+#
 # Edituj per-cluster podle toho co chceš povolit:
 #   img   — image generation (ComfyUI FLUX/Qwen/Anima/...)
 #   tts   — text-to-speech (MOSS-TTS v1.5)
@@ -10,8 +13,9 @@
 #   vid   — video generation (ComfyUI Sana/Anima/img2vid)
 #   llm   — large language model (llama.cpp)
 #   orch  — orchestrace (Hub-UI master, vždy true)
+#   auto  — orchestrator + idle-unload VRAM (true=auto, false=manual)
 
-machine: ${MACHINE_ID:-aiworker}
+machine: aiworker
 toggles:
   img: true
   tts: true
@@ -19,3 +23,4 @@ toggles:
   vid: true
   llm: true
   orch: true
+  auto: true
