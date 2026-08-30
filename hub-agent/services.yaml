@@ -24,9 +24,10 @@ services:
   - id: comfyui
     type: img
     gpus: [0, 1]
-    compose_dir: /home/hermes/local-ai-stack
+    compose_dir: /home/hermes/local-ai-stack-test
     compose_file: docker-compose.yml
     compose_service: comfyui
+    container: comfyui-aiworker
     port: 8188
     healthcheck: http://127.0.0.1:8188/health
     webui:
@@ -40,9 +41,10 @@ services:
   - id: moss-tts
     type: tts
     gpus: [0, 1]
-    compose_dir: /home/hermes/local-ai-stack
+    compose_dir: /home/hermes/local-ai-stack-test
     compose_file: docker-compose.yml
     compose_service: comfyui
+    container: comfyui-aiworker
     port: 8188
     healthcheck: http://127.0.0.1:8188/health
     webui: null   # TTS nemá standalone UI, volá se přes Hub-UI
@@ -51,9 +53,10 @@ services:
   - id: stt-service
     type: stt
     gpus: [0]
-    compose_dir: /home/hermes/local-ai-stack
+    compose_dir: /home/hermes/local-ai-stack-test
     compose_file: docker-compose.yml
     compose_service: stt-service
+    container: stt-service-aiworker
     port: 5007
     healthcheck: http://127.0.0.1:5007/health
     webui:
@@ -67,9 +70,10 @@ services:
   - id: comfyui-video
     type: video
     gpus: [0, 1]
-    compose_dir: /home/hermes/local-ai-stack
+    compose_dir: /home/hermes/local-ai-stack-test
     compose_file: docker-compose.yml
     compose_service: comfyui
+    container: comfyui-aiworker
     port: 8188
     healthcheck: http://127.0.0.1:8188/health
     webui:
@@ -84,9 +88,10 @@ services:
   - id: qwen
     type: llm
     gpus: [0]
-    compose_dir: /home/hermes/local-ai-stack
+    compose_dir: /home/hermes/local-ai-stack-test
     compose_file: docker-compose.yml
     compose_service: qwen
+    container: qwen-aiworker
     port: 8085
     healthcheck: http://127.0.0.1:8085/health
     webui:
@@ -100,10 +105,11 @@ services:
   - id: ornith
     type: llm
     gpus: [1]
-    compose_dir: /home/hermes/local-ai-stack
+    compose_dir: /home/hermes/local-ai-stack-test
     compose_file: docker-compose.yml
     profiles: [aiworker]
     compose_service: ornith
+    container: ornith-aiworker
     port: 8086
     healthcheck: http://127.0.0.1:8086/health
     webui:
@@ -117,9 +123,10 @@ services:
   - id: hub-ui
     type: orch
     gpus: []
-    compose_dir: /home/hermes/local-ai-stack
+    compose_dir: /home/hermes/local-ai-stack-test
     compose_file: docker-compose.yml
     compose_service: hub-ui
+    container: hub-ui-aiworker
     port: 8288
     healthcheck: http://127.0.0.1:8288/health
     webui:
