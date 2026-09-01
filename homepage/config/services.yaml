@@ -1,0 +1,98 @@
+# Homepage services.yaml — VŠECHNY služby clusteru (kompletní)
+# aicore: 192.168.10.60 | aiworker: 192.168.10.194
+
+# ── AI / Inference ──
+- AI:
+    - ComfyUI:
+        icon: sh-comfyui
+        href: http://192.168.10.194:8189
+        description: Image/Video gen (aiworker)
+        widget:
+          type: custom
+          url: http://192.168.10.194:8188/health
+    - ComfyUI Webapp:
+        icon: sh-comfyui
+        href: http://192.168.10.194:8288
+        description: ComfyUI webapp (aiworker)
+    - Qwen (llama.cpp):
+        icon: sh-qwen
+        href: http://192.168.10.60:8085
+        description: Qwen3.8-27B MTP (aicore)
+        widget:
+          type: custom
+          url: http://192.168.10.60:8085/health
+    - Ornith:
+        icon: sh-ornith
+        href: http://192.168.10.194:8086
+        description: Ornith 1.5 (aiworker)
+    - AI Worker Router:
+        icon: sh-router
+        href: http://192.168.10.194:2345
+        description: aiworker-control router (aiworker)
+    - Ollama:
+        icon: sh-ollama
+        href: http://192.168.10.194:11434
+        description: Lokální Ollama (aiworker)
+    - MOSS-TTS:
+        icon: sh-moss
+        href: http://192.168.10.194:8062
+        description: MOSS-TTS v1.5 (aiworker)
+    - MOSS-Audio:
+        icon: sh-moss
+        href: http://192.168.10.194:30001
+        description: MOSS Audio 4B (aiworker)
+    - MOSS-Gradio:
+        icon: sh-moss
+        href: http://192.168.10.194:7860
+        description: MOSS Audio Gradio (aiworker)
+    - STT (faster-whisper):
+        icon: sh-whisper
+        href: http://192.168.10.60:5007/docs
+        description: Speech-to-text (aicore)
+
+# ── Infra / Platformy ──
+- Infra:
+    - Hub-UI:
+        icon: sh-dashboard
+        href: http://192.168.10.60:8288
+        description: Master orchestrátor (aicore)
+    - Hub-Agent:
+        icon: sh-dashboard
+        href: http://192.168.10.194:8199
+        description: Hub agent (aiworker)
+    - Camofox:
+        icon: sh-firefox
+        href: http://192.168.10.194:9377
+        description: Browser automation (aiworker)
+    - Camofox MCP:
+        icon: sh-firefox
+        href: http://192.168.10.194:3000
+        description: Camofox MCP (aiworker)
+    - Comfy MCP:
+        icon: sh-comfyui
+        href: http://192.168.10.194:8188
+        description: Comfy MCP local (aiworker)
+    - Matrix (Element):
+        icon: sh-matrix
+        href: http://192.168.10.60:8008
+        description: Element Web (aicore)
+    - Matrix API:
+        icon: sh-matrix
+        href: http://192.168.10.60:8448
+        description: Dendrite API (aicore)
+    - Gitea:
+        icon: sh-gitea
+        href: http://192.168.10.60:3000
+        description: Git server (aicore)
+    - Portainer:
+        icon: sh-portainer
+        href: https://192.168.10.194:9443
+        description: Docker management (aiworker)
+    - qBittorrent:
+        icon: sh-qbittorrent
+        href: http://192.168.10.60:8080
+        description: Torrent client (aicore)
+    - Content Factory Runner:
+        icon: sh-github
+        href: http://192.168.10.194
+        description: GHA runner (aiworker)

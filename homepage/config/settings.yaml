@@ -1,0 +1,24 @@
+# Homepage settings.yaml — vzhled a chování
+title: "AI Cluster Dashboard"
+
+# Téma
+theme: dark
+color: slate
+background:
+  blur: sm
+
+# Layout
+layout:
+  AI:
+    style: row
+    columns: 4
+  Infra:
+    style: row
+    columns: 4
+
+# Status widgety (docker)
+statusStyle: dot
+
+# Provozní
+showStats: true
+hideVersion: false

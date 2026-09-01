@@ -1,0 +1,22 @@
+# Homepage (gethomepage.dev) — dashboard pro celou síť, běží na aicore.
+#
+# Zobrazuje všechny služby clusteru: ComfyUI, Qwen, Ornith, Ollama, MOSS-TTS,
+# STT, Camofox, Matrix, Gitea, Hub-UI, moss-audio.
+#
+# Spuštění na aicore:
+#   docker compose -f docker-compose.homepage.yml up -d
+#   → dashboard na http://192.168.10.60:3002
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: 192.168.10.60:3002
+    volumes:
+      - ./homepage/config:/app/config
+      - ./homepage/icons:/app/public/icons
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # Docker status widgety
